@@ -5,8 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { Grid, OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { exportObjectToGLB } from "../lib/export-glb";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+
 
 // ─── Tipler ──────────────────────────────────────────────────────────────────
 
