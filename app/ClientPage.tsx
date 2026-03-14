@@ -870,7 +870,7 @@ type TryProduct = {
   id: string; name: string;
   w: number; h: number; d: number;
   icon: string; color: string;
-  links: { store: string; url: string; price: string }[];
+  searchQuery: string; // Arama motoru sorgusu
 };
 
 const TRY_CATEGORIES: { id: string; label: string; icon: string; color: string }[] = [
@@ -883,55 +883,68 @@ const TRY_CATEGORIES: { id: string; label: string; icon: string; color: string }
 
 const TRY_PRODUCTS: Record<string, TryProduct[]> = {
   kitchen: [
-    { id:"plate",     name:"Tabak (yemek)",      w:27,  h:3,  d:27,  icon:"🍽️", color:"#E5E7EB", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=yemek+tabağı",price:"₺89"},{store:"IKEA",url:"https://ikea.com.tr",price:"₺79"}] },
-    { id:"plate_s",   name:"Tabak (çorba)",       w:22,  h:6,  d:22,  icon:"🥣", color:"#BFDBFE", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=çorba+tabağı",price:"₺79"}] },
-    { id:"mug",       name:"Kupa / Bardak",       w:9,   h:10, d:9,   icon:"☕", color:"#FDE68A", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=kupa+bardak",price:"₺49"}] },
-    { id:"pot_sm",    name:"Tencere (orta)",      w:28,  h:24, d:28,  icon:"🥘", color:"#C0C0C0", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=tencere",price:"₺349"},{store:"Hepsiburada",url:"https://hepsiburada.com",price:"₺329"}] },
-    { id:"pot_lg",    name:"Tencere (büyük)",     w:36,  h:28, d:36,  icon:"🫕", color:"#9CA3AF", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=büyük+tencere",price:"₺499"}] },
-    { id:"pan",       name:"Tava (30cm)",         w:30,  h:6,  d:30,  icon:"🍳", color:"#374151", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=tava",price:"₺299"},{store:"IKEA",url:"https://ikea.com.tr",price:"₺279"}] },
-    { id:"micro",     name:"Mikrodalga",          w:49,  h:30, d:36,  icon:"⬛", color:"#374151", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=mikrodalga",price:"₺2.299"},{store:"MediaMarkt",url:"https://mediamarkt.com.tr",price:"₺2.149"}] },
-    { id:"coffee",    name:"Kahve Makinesi",      w:22,  h:35, d:28,  icon:"☕", color:"#78350F", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=kahve+makinesi",price:"₺1.899"}] },
-    { id:"blender",   name:"Blender",             w:18,  h:45, d:18,  icon:"🥤", color:"#EF4444", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=blender",price:"₺599"}] },
-    { id:"bowl_set",  name:"Kase Seti (6'lı)",    w:30,  h:15, d:30,  icon:"🍜", color:"#FEF3C7", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺149"},{store:"Trendyol",url:"https://trendyol.com",price:"₺129"}] },
-    { id:"spice",     name:"Baharat Kavanozu",    w:6,   h:12, d:6,   icon:"🧂", color:"#F9FAFB", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=baharat+kavanozu",price:"₺29"}] },
-    { id:"cutlery",   name:"Çatal-Kaşık Seti",   w:20,  h:10, d:10,  icon:"🥄", color:"#D1D5DB", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺199"},{store:"Trendyol",url:"https://trendyol.com",price:"₺179"}] },
+    { id:"plate",     name:"Tabak (yemek)",      w:27,  h:3,  d:27,  icon:"🍽️", color:"#E5E7EB", searchQuery:"yemek tabağı 27cm" },
+    { id:"plate_s",   name:"Tabak (çorba)",       w:22,  h:6,  d:22,  icon:"🥣", color:"#BFDBFE", searchQuery:"çorba tabağı 22cm" },
+    { id:"mug",       name:"Kupa / Bardak",       w:9,   h:10, d:9,   icon:"☕", color:"#FDE68A", searchQuery:"kupa bardak seramik" },
+    { id:"pot_sm",    name:"Tencere (orta 28cm)", w:28,  h:24, d:28,  icon:"🥘", color:"#C0C0C0", searchQuery:"tencere 28cm paslanmaz" },
+    { id:"pot_lg",    name:"Tencere (büyük 36cm)",w:36,  h:28, d:36,  icon:"🫕", color:"#9CA3AF", searchQuery:"tencere 36cm büyük" },
+    { id:"pan",       name:"Tava (30cm)",         w:30,  h:6,  d:30,  icon:"🍳", color:"#374151", searchQuery:"tava 30cm yapışmaz" },
+    { id:"micro",     name:"Mikrodalga 49x30cm",  w:49,  h:30, d:36,  icon:"📺", color:"#374151", searchQuery:"mikrodalga fırın 20 litre" },
+    { id:"coffee",    name:"Kahve Makinesi",      w:22,  h:35, d:28,  icon:"☕", color:"#78350F", searchQuery:"kahve makinesi espresso" },
+    { id:"blender",   name:"Blender",             w:18,  h:45, d:18,  icon:"🥤", color:"#EF4444", searchQuery:"blender smoothie mutfak" },
+    { id:"bowl_set",  name:"Kase Seti (6'lı)",    w:30,  h:15, d:30,  icon:"🍜", color:"#FEF3C7", searchQuery:"kase seti 6 parça" },
+    { id:"spice",     name:"Baharat Kavanozu",    w:6,   h:12, d:6,   icon:"🧂", color:"#F9FAFB", searchQuery:"baharat kavanozu cam set" },
+    { id:"cutlery",   name:"Çatal-Kaşık Seti",   w:20,  h:10, d:10,  icon:"🥄", color:"#D1D5DB", searchQuery:"çatal kaşık bıçak seti paslanmaz" },
+    { id:"glass",     name:"Su Bardağı (6'lı)",   w:8,   h:12, d:8,   icon:"🥛", color:"#DBEAFE", searchQuery:"su bardağı 6lı set cam" },
+    { id:"pot_press", name:"Düdüklü Tencere",     w:25,  h:22, d:25,  icon:"♨️", color:"#C0C0C0", searchQuery:"düdüklü tencere 6 litre" },
   ],
   shoe: [
-    { id:"shoe_m",    name:"Spor Ayakkabı (42)",  w:32,  h:12, d:12,  icon:"👟", color:"#6B7280", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=spor+ayakkabı",price:"₺899"},{store:"Hepsiburada",url:"https://hepsiburada.com",price:"₺849"}] },
-    { id:"shoe_w",    name:"Bayan Ayakkabı (38)", w:28,  h:10, d:10,  icon:"👡", color:"#BE185D", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=bayan+ayakkabı",price:"₺699"}] },
-    { id:"boot",      name:"Bot / Çizme",         w:32,  h:40, d:14,  icon:"👢", color:"#7C2D12", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=bot",price:"₺1.299"}] },
-    { id:"heel",      name:"Topuklu (8cm)",       w:26,  h:20, d:10,  icon:"👠", color:"#BE185D", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=topuklu+ayakkabı",price:"₺799"}] },
-    { id:"slipper",   name:"Terlik",              w:28,  h:5,  d:10,  icon:"🩴", color:"#FDE68A", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=terlik",price:"₺149"}] },
-    { id:"box_shoe",  name:"Ayakkabı Kutusu",     w:33,  h:13, d:20,  icon:"📦", color:"#FEF3C7", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=ayakkabı+kutusu",price:"₺29"},{store:"IKEA",url:"https://ikea.com.tr",price:"₺25"}] },
-    { id:"shoebag",   name:"Ayakkabı Torbası",    w:35,  h:25, d:5,   icon:"👜", color:"#D97706", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=ayakkabı+torbası",price:"₺79"}] },
-    { id:"kids_shoe", name:"Çocuk Ayakkabısı",    w:22,  h:9,  d:9,   icon:"👟", color:"#93C5FD", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=çocuk+ayakkabısı",price:"₺399"}] },
+    { id:"shoe_m",    name:"Spor Ayakkabı (42)",  w:32,  h:12, d:12,  icon:"👟", color:"#6B7280", searchQuery:"spor ayakkabı erkek 42 numara" },
+    { id:"shoe_w",    name:"Bayan Ayakkabı (38)", w:28,  h:10, d:10,  icon:"👡", color:"#BE185D", searchQuery:"bayan ayakkabı 38 numara" },
+    { id:"boot",      name:"Bot / Çizme",         w:32,  h:40, d:14,  icon:"👢", color:"#7C2D12", searchQuery:"bot çizme 38-42 numara" },
+    { id:"heel",      name:"Topuklu (8cm)",       w:26,  h:20, d:10,  icon:"👠", color:"#BE185D", searchQuery:"topuklu ayakkabı 8cm topuk" },
+    { id:"slipper",   name:"Terlik",              w:28,  h:5,  d:10,  icon:"🩴", color:"#FDE68A", searchQuery:"ev terliği yumuşak taban" },
+    { id:"box_shoe",  name:"Ayakkabı Kutusu",     w:33,  h:13, d:20,  icon:"📦", color:"#FEF3C7", searchQuery:"şeffaf ayakkabı kutusu istiflenebilir" },
+    { id:"shoebag",   name:"Ayakkabı Torbası",    w:35,  h:25, d:5,   icon:"👜", color:"#D97706", searchQuery:"ayakkabı saklama torbası beze" },
+    { id:"kids_shoe", name:"Çocuk Ayakkabısı",    w:22,  h:9,  d:9,   icon:"👟", color:"#93C5FD", searchQuery:"çocuk spor ayakkabısı" },
+    { id:"sneaker",   name:"Yüksek Bilekli (44)", w:34,  h:15, d:13,  icon:"👟", color:"#374151", searchQuery:"yüksek bilekli spor ayakkabı" },
+    { id:"sandal",    name:"Sandalet",            w:27,  h:4,  d:10,  icon:"🩴", color:"#FCD34D", searchQuery:"sandalet yazlık ayakkabı" },
   ],
   laundry: [
-    { id:"detergent", name:"Deterjan (5kg)",       w:22,  h:35, d:15,  icon:"🧴", color:"#60A5FA", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=deterjan",price:"₺149"},{store:"Migros",url:"https://migros.com.tr",price:"₺139"}] },
-    { id:"softener",  name:"Yumuşatıcı (2L)",      w:16,  h:28, d:12,  icon:"🌸", color:"#F9A8D4", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=yumuşatıcı",price:"₺89"}] },
-    { id:"iron",      name:"Ütü",                  w:30,  h:15, d:14,  icon:"🪄", color:"#818CF8", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=ütü",price:"₺799"}] },
-    { id:"basket",    name:"Çamaşır Sepeti",       w:45,  h:60, d:35,  icon:"🧺", color:"#FDE68A", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=çamaşır+sepeti",price:"₺199"},{store:"IKEA",url:"https://ikea.com.tr",price:"₺179"}] },
-    { id:"towel",     name:"Havlu (70x140)",       w:70,  h:2,  d:14,  icon:"🏳️", color:"#E0F2FE", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=havlu",price:"₺149"}] },
-    { id:"tp",        name:"Tuvalet Kağıdı (24'lü)",w:38, h:40, d:24,  icon:"🧻", color:"#F9FAFB", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=tuvalet+kağıdı",price:"₺199"},{store:"Migros",url:"https://migros.com.tr",price:"₺189"}] },
-    { id:"cleaner",   name:"Genel Temizleyici",    w:10,  h:28, d:10,  icon:"🧹", color:"#A7F3D0", links:[{store:"Migros",url:"https://migros.com.tr",price:"₺59"},{store:"Trendyol",url:"https://trendyol.com",price:"₺55"}] },
+    { id:"detergent", name:"Deterjan (5kg)",       w:22,  h:35, d:15,  icon:"🧴", color:"#60A5FA", searchQuery:"çamaşır deterjanı toz 5kg" },
+    { id:"softener",  name:"Yumuşatıcı (2L)",      w:16,  h:28, d:12,  icon:"🌸", color:"#F9A8D4", searchQuery:"çamaşır yumuşatıcısı 2 litre" },
+    { id:"iron",      name:"Ütü",                  w:30,  h:15, d:14,  icon:"🪄", color:"#818CF8", searchQuery:"buharlı ütü ev tipi" },
+    { id:"basket",    name:"Çamaşır Sepeti",       w:45,  h:60, d:35,  icon:"🧺", color:"#FDE68A", searchQuery:"çamaşır sepeti büyük oval" },
+    { id:"towel",     name:"Havlu (70x140cm)",     w:70,  h:2,  d:14,  icon:"🏳️", color:"#E0F2FE", searchQuery:"banyo havlusu 70x140 pamuk" },
+    { id:"tp",        name:"Tuvalet Kağıdı (24'lü)",w:38, h:40, d:24,  icon:"🧻", color:"#F9FAFB", searchQuery:"tuvalet kağıdı 24lü paket" },
+    { id:"cleaner",   name:"Genel Temizleyici",    w:10,  h:28, d:10,  icon:"🧹", color:"#A7F3D0", searchQuery:"çok amaçlı temizlik spreyi" },
+    { id:"iron_board",name:"Ütü Masası",           w:120, h:90, d:35,  icon:"📋", color:"#D1D5DB", searchQuery:"ütü masası katlanabilir" },
+    { id:"laundry_lg",name:"Büyük Çamaşır Sepeti", w:55, h:70, d:42,  icon:"🧺", color:"#FEF3C7", searchQuery:"büyük çamaşır sepeti bambu" },
+    { id:"fabric_sof",name:"Kumaş Yumuşatıcı",    w:12,  h:22, d:12,  icon:"🧴", color:"#C7D2FE", searchQuery:"kumaş yumuşatıcı sprey" },
   ],
   living: [
-    { id:"book",      name:"Kitap (standart)",     w:15,  h:22, d:3,   icon:"📚", color:"#92400E", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=kitap",price:"₺99"}] },
-    { id:"book_set",  name:"Kitap Seti (10 adet)", w:25,  h:22, d:15,  icon:"📖", color:"#D97706", links:[{store:"Trendyol",url:"https://trendyol.com",price:"₺499"}] },
-    { id:"vase",      name:"Vazo (orta)",           w:18,  h:30, d:18,  icon:"🏺", color:"#A78BFA", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺199"},{store:"Trendyol",url:"https://trendyol.com",price:"₺179"}] },
-    { id:"frame",     name:"Fotoğraf Çerçevesi",   w:20,  h:25, d:2,   icon:"🖼️", color:"#FEF3C7", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺89"},{store:"Trendyol",url:"https://trendyol.com",price:"₺79"}] },
-    { id:"candle",    name:"Mum / Dekor",           w:8,   h:15, d:8,   icon:"🕯️", color:"#FDE68A", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺49"}] },
-    { id:"plant",     name:"Saksı Bitki (orta)",   w:20,  h:35, d:20,  icon:"🌱", color:"#A7F3D0", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=saksı+bitki",price:"₺299"}] },
-    { id:"remote",    name:"Kumanda + Pil",         w:6,   h:18, d:3,   icon:"📱", color:"#374151", links:[{store:"Trendyol",url:"https://trendyol.com",price:"₺49"}] },
+    { id:"book",      name:"Kitap (standart)",     w:15,  h:22, d:3,   icon:"📚", color:"#92400E", searchQuery:"roman kitap bestseller" },
+    { id:"book_set",  name:"Kitap Seti (10 adet)", w:25,  h:22, d:15,  icon:"📖", color:"#D97706", searchQuery:"kitap seti ciltli 10 parça" },
+    { id:"vase",      name:"Vazo (orta 18cm)",     w:18,  h:30, d:18,  icon:"🏺", color:"#A78BFA", searchQuery:"dekoratif vazo cam seramik" },
+    { id:"frame",     name:"Fotoğraf Çerçevesi",   w:20,  h:25, d:2,   icon:"🖼️", color:"#FEF3C7", searchQuery:"fotoğraf çerçevesi 13x18 ahşap" },
+    { id:"candle",    name:"Mum / Dekor",           w:8,   h:15, d:8,   icon:"🕯️", color:"#FDE68A", searchQuery:"dekoratif mum koku ev" },
+    { id:"plant",     name:"Saksı Bitki (orta)",   w:20,  h:35, d:20,  icon:"🌱", color:"#A7F3D0", searchQuery:"ev bitkisi saksı orta boy" },
+    { id:"remote",    name:"Kumanda",              w:6,   h:18, d:3,   icon:"📱", color:"#374151", searchQuery:"universal tv kumanda" },
+    { id:"clock",     name:"Masa Saati",           w:12,  h:18, d:8,   icon:"🕐", color:"#FDE68A", searchQuery:"masa saati dekoratif dijital" },
+    { id:"speaker",   name:"Bluetooth Hoparlör",   w:18,  h:12, d:12,  icon:"🔊", color:"#374151", searchQuery:"bluetooth hoparlör taşınabilir" },
+    { id:"lamp",      name:"Masa Lambası",         w:20,  h:45, d:20,  icon:"💡", color:"#FCD34D", searchQuery:"masa lambası led dokunmatik" },
   ],
   bedroom: [
-    { id:"folded_s",  name:"Katlanmış Tişört",     w:25,  h:5,  d:30,  icon:"👕", color:"#BFDBFE", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=tişört",price:"₺199"}] },
-    { id:"folded_p",  name:"Pantolon (katlanmış)", w:35,  h:5,  d:25,  icon:"👖", color:"#6B7280", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=pantolon",price:"₺399"}] },
-    { id:"sweater",   name:"Kazak (katlanmış)",    w:35,  h:8,  d:30,  icon:"🧥", color:"#D97706", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=kazak",price:"₺499"}] },
-    { id:"bag",       name:"El Çantası",           w:32,  h:24, d:12,  icon:"👜", color:"#BE185D", links:[{store:"Trendyol",url:"https://trendyol.com/sr?q=el+çantası",price:"₺699"}] },
-    { id:"box_s",     name:"Saklama Kutusu (S)",   w:30,  h:20, d:20,  icon:"📦", color:"#FEF3C7", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺79"},{store:"Trendyol",url:"https://trendyol.com",price:"₺69"}] },
-    { id:"box_l",     name:"Saklama Kutusu (L)",   w:60,  h:30, d:40,  icon:"🗃️", color:"#E5E7EB", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺149"},{store:"Trendyol",url:"https://trendyol.com",price:"₺129"}] },
-    { id:"pillow",    name:"Yastık",               w:50,  h:15, d:70,  icon:"🛏️", color:"#F3F4F6", links:[{store:"IKEA",url:"https://ikea.com.tr",price:"₺249"},{store:"Trendyol",url:"https://trendyol.com",price:"₺199"}] },
+    { id:"folded_s",  name:"Katlanmış Tişört",     w:25,  h:5,  d:30,  icon:"👕", color:"#BFDBFE", searchQuery:"erkek tişört pamuk basic" },
+    { id:"folded_p",  name:"Pantolon (katlanmış)", w:35,  h:5,  d:25,  icon:"👖", color:"#6B7280", searchQuery:"pantolon chino slim fit" },
+    { id:"sweater",   name:"Kazak (katlanmış)",    w:35,  h:8,  d:30,  icon:"🧥", color:"#D97706", searchQuery:"kazak triko örme kışlık" },
+    { id:"bag",       name:"El Çantası",           w:32,  h:24, d:12,  icon:"👜", color:"#BE185D", searchQuery:"el çantası deri kadın" },
+    { id:"box_s",     name:"Saklama Kutusu (S)",   w:30,  h:20, d:20,  icon:"📦", color:"#FEF3C7", searchQuery:"saklama kutusu kapaklı küçük" },
+    { id:"box_l",     name:"Saklama Kutusu (L)",   w:60,  h:30, d:40,  icon:"🗃️", color:"#E5E7EB", searchQuery:"saklama kutusu büyük yatak altı" },
+    { id:"pillow",    name:"Yastık (50x70cm)",     w:50,  h:15, d:70,  icon:"🛏️", color:"#F3F4F6", searchQuery:"uyku yastığı 50x70 sert yumuşak" },
+    { id:"perfume",   name:"Parfüm Şişesi",        w:5,   h:12, d:5,   icon:"🌹", color:"#FEF3C7", searchQuery:"erkek kadın parfüm 100ml" },
+    { id:"watch_box", name:"Saat Kutusu",          w:25,  h:8,  d:18,  icon:"⌚", color:"#D1D5DB", searchQuery:"saat kutusu düzenleyici" },
+    { id:"jeans",     name:"Jean Pantolon",        w:35,  h:5,  d:25,  icon:"👖", color:"#1E40AF", searchQuery:"jean pantolon slim 32 beden" },
   ],
 };
 
@@ -957,7 +970,12 @@ function ModuPlanApp() {
   const [tryProductId, setTryProductId] = useState<string | null>(null);
   const [showProductPanel, setShowProductPanel] = useState(false);
   const [showBuyLinks, setShowBuyLinks] = useState(false);
-  const [hoveredCabId, setHoveredCabId] = useState<number | null>(null);
+  // Sahnede serbest konumlanmış ürün — tıklanınca eklenir, 3 eksende sürüklenebilir
+  const [placedProduct, setPlacedProduct] = useState<{
+    product: TryProduct;
+    pos: [number, number, number];
+    dragAxis: "x" | "y" | "z" | null;
+  } | null>(null);
 
   const tryProduct = tryProductId
     ? TRY_PRODUCTS[tryCategory]?.find(p => p.id === tryProductId) ?? null
@@ -1318,8 +1336,8 @@ function ModuPlanApp() {
                 {cabinets.map(cab => (
                   <group
                     key={cab.id}
-                    onPointerEnter={() => tryProduct && setHoveredCabId(cab.id)}
-                    onPointerLeave={() => setHoveredCabId(null)}
+                    onPointerEnter={() => {}}
+                    onPointerLeave={() => {}}
                   >
                   <CabinetMesh
                     cab={cab}
@@ -1350,50 +1368,135 @@ function ModuPlanApp() {
                 maxPolarAngle={Math.PI / 2.1}
               />
 
-              {/* ── Ürün Dene — 3D overlay ── */}
-              {tryProduct && hoveredCabId != null && (() => {
-                const cab = cabinets.find(c => c.id === hoveredCabId);
-                if (!cab) return null;
-                const heightCm = room.height * cab.heightRatio;
-                const widthCm  = heightCm * cab.widthFactor;
-                const depthCm  = heightCm * cab.depthFactor;
-                const W = widthCm * CM_TO_M;
-                const H = heightCm * CM_TO_M;
-                const D = depthCm * CM_TO_M;
-                const pW = tryProduct.w * CM_TO_M;
-                const pH = tryProduct.h * CM_TO_M;
-                const pD = tryProduct.d * CM_TO_M;
-                const fits = tryProduct.w <= widthCm && tryProduct.d <= depthCm;
-                const fitsH = tryProduct.h <= heightCm;
-                const fitsAll = fits && fitsH;
+              {/* ── Ürün Dene — Serbest Sürüklenebilir 3D Ürün ── */}
+              {placedProduct && (() => {
+                const { product: prod, pos, dragAxis } = placedProduct;
+                const pW = prod.w * CM_TO_M;
+                const pH = prod.h * CM_TO_M;
+                const pD = prod.d * CM_TO_M;
+
+                // Herhangi bir dolaba yakın mı? Ölçü kontrolü
+                const nearCab = cabinets.find(cab => {
+                  const hCm = room.height * cab.heightRatio;
+                  const wCm = hCm * cab.widthFactor;
+                  const dCm = hCm * cab.depthFactor;
+                  const H = hCm * CM_TO_M;
+                  const W = wCm * CM_TO_M;
+                  const D = dCm * CM_TO_M;
+                  return (
+                    Math.abs(pos[0] - cab.x) < W / 2 + 0.1 &&
+                    Math.abs(pos[2] - cab.z) < D / 2 + 0.1 &&
+                    pos[1] < H + 0.1
+                  );
+                });
+                const fitsW = nearCab ? prod.w <= nearCab.widthFactor * room.height * nearCab.heightRatio : true;
+                const fitsD = nearCab ? prod.d <= nearCab.depthFactor * room.height * nearCab.heightRatio : true;
+                const fitsH = nearCab ? prod.h <= room.height * nearCab.heightRatio : true;
+                const fitsAll = fitsW && fitsD && fitsH;
+                const boxColor = nearCab ? (fitsAll ? "#10B981" : "#EF4444") : "#3B82F6";
+
+                const makeAxisDrag = (axis: "x" | "y" | "z") => ({
+                  onPointerDown: (e: any) => {
+                    e.stopPropagation();
+                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                    setPlacedProduct(prev => prev ? { ...prev, dragAxis: axis } : prev);
+                  },
+                  onPointerMove: (e: any) => {
+                    e.stopPropagation();
+                    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+                    setPlacedProduct(prev => {
+                      if (!prev || prev.dragAxis !== axis) return prev;
+                      const [px, py, pz] = prev.pos;
+                      const delta = axis === "y"
+                        ? e.movementY * -0.005
+                        : axis === "x"
+                        ? e.movementX * 0.005
+                        : e.movementY * 0.005;
+                      const newPos: [number, number, number] = [
+                        axis === "x" ? px + delta : px,
+                        axis === "y" ? Math.max(0.01, py + delta) : py,
+                        axis === "z" ? pz + delta : pz,
+                      ];
+                      return { ...prev, pos: newPos };
+                    });
+                  },
+                  onPointerUp: (e: any) => {
+                    e.stopPropagation();
+                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                    setPlacedProduct(prev => prev ? { ...prev, dragAxis: null } : prev);
+                  },
+                });
+
                 return (
-                  <group position={[cab.x, H / 2, cab.z]} rotation={[0, cab.rotation, 0]}>
-                    {/* Ürün boyutunu gösteren yarı saydam kutu */}
-                    <mesh position={[0, -H / 2 + pH / 2, D / 2 - pD / 2]}>
-                      <boxGeometry args={[Math.min(pW, W - 0.01), pH, Math.min(pD, D - 0.01)]} />
-                      <meshStandardMaterial
-                        color={fitsAll ? "#10B981" : "#EF4444"}
-                        transparent opacity={0.35}
-                      />
+                  <group position={pos}>
+                    {/* Ana ürün kutusu */}
+                    <mesh>
+                      <boxGeometry args={[pW, pH, pD]} />
+                      <meshStandardMaterial color={boxColor} transparent opacity={0.30} />
                     </mesh>
-                    <Html position={[0, H / 2 + 0.15, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+                    {/* Kenar çizgisi */}
+                    <lineSegments>
+                      <edgesGeometry args={[new THREE.BoxGeometry(pW, pH, pD)]} />
+                      <lineBasicMaterial color={boxColor} />
+                    </lineSegments>
+
+                    {/* X ekseni kırmızı ok — yatay sürükleme */}
+                    <mesh position={[pW / 2 + 0.04, 0, 0]} {...makeAxisDrag("x")}>
+                      <boxGeometry args={[0.06, 0.02, 0.02]} />
+                      <meshStandardMaterial color="#EF4444" />
+                    </mesh>
+                    {/* Y ekseni yeşil ok — yukarı/aşağı */}
+                    <mesh position={[0, pH / 2 + 0.04, 0]} {...makeAxisDrag("y")}>
+                      <boxGeometry args={[0.02, 0.06, 0.02]} />
+                      <meshStandardMaterial color="#10B981" />
+                    </mesh>
+                    {/* Z ekseni mavi ok — ileri/geri */}
+                    <mesh position={[0, 0, pD / 2 + 0.04]} {...makeAxisDrag("z")}>
+                      <boxGeometry args={[0.02, 0.02, 0.06]} />
+                      <meshStandardMaterial color="#3B82F6" />
+                    </mesh>
+
+                    {/* Emoji + bilgi etiketi */}
+                    <Html position={[0, pH / 2 + 0.12, 0]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
                       <div style={{
-                        background: fitsAll ? "rgba(16,185,129,0.92)" : "rgba(239,68,68,0.92)",
+                        background: "rgba(15,23,42,0.88)",
                         color: "white",
-                        borderRadius: 8,
-                        padding: "5px 8px",
-                        fontSize: 11,
-                        fontWeight: 600,
+                        borderRadius: 10,
+                        padding: "6px 10px",
+                        fontSize: 13,
+                        fontWeight: 700,
                         whiteSpace: "nowrap",
                         fontFamily: "system-ui,sans-serif",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                        boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 2,
                       }}>
-                        {tryProduct.icon} {tryProduct.name}<br />
-                        <span style={{ fontWeight: 400, fontSize: 10 }}>
-                          {tryProduct.w}×{tryProduct.d}×{tryProduct.h}cm
-                          {fitsAll ? " ✓ Sığar" : !fits ? " ✗ Genişlik/Derinlik" : " ✗ Yükseklik"}
-                        </span>
+                        <span style={{ fontSize: 20 }}>{prod.icon}</span>
+                        <span style={{ fontSize: 11 }}>{prod.name}</span>
+                        <span style={{ fontSize: 10, opacity: 0.7 }}>{prod.w}×{prod.d}×{prod.h} cm</span>
+                        {nearCab && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 800,
+                            color: fitsAll ? "#6EE7B7" : "#FCA5A5",
+                            marginTop: 2,
+                          }}>
+                            {fitsAll ? "✓ Sığar" : "✗ Sığmaz"}
+                          </span>
+                        )}
                       </div>
+                    </Html>
+
+                    {/* Eksenleri gösteren label */}
+                    <Html position={[pW / 2 + 0.08, 0, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                      <div style={{ fontSize: 9, color: "#EF4444", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>X</div>
+                    </Html>
+                    <Html position={[0, pH / 2 + 0.10, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                      <div style={{ fontSize: 9, color: "#10B981", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>Y</div>
+                    </Html>
+                    <Html position={[0, 0, pD / 2 + 0.10]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                      <div style={{ fontSize: 9, color: "#3B82F6", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>Z</div>
                     </Html>
                   </group>
                 );
@@ -1684,9 +1787,23 @@ function ModuPlanApp() {
                   {(TRY_PRODUCTS[tryCategory] || []).map(prod => (
                     <button
                       key={prod.id}
-                      onClick={() => setTryProductId(tryProductId === prod.id ? null : prod.id)}
+                      onClick={() => {
+                        // Ürüne tıklanınca sahnede dolabın önüne yerleştir
+                        const firstCab = cabinets[0];
+                        const startPos: [number, number, number] = firstCab
+                          ? [firstCab.x, (room.height * firstCab.heightRatio * CM_TO_M) / 2, firstCab.z + (firstCab.depthFactor * room.height * firstCab.heightRatio * CM_TO_M) / 2 + 0.1]
+                          : [0, prod.h * CM_TO_M / 2, 0.5];
+                        if (placedProduct?.product.id === prod.id) {
+                          // Zaten aynı ürün — kaldır
+                          setPlacedProduct(null);
+                          setTryProductId(null);
+                        } else {
+                          setPlacedProduct({ product: prod, pos: startPos, dragAxis: null });
+                          setTryProductId(prod.id);
+                        }
+                      }}
                       className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs transition text-left group ${
-                        tryProductId === prod.id
+                        placedProduct?.product.id === prod.id
                           ? "bg-primary/10 border border-primary/30 text-primary"
                           : "hover:bg-slate-50 border border-transparent"
                       }`}
@@ -1697,16 +1814,28 @@ function ModuPlanApp() {
                         <div className="font-semibold text-slate-700 truncate">{prod.name}</div>
                         <div className="text-[9px] text-slate-400">{prod.w}G × {prod.d}D × {prod.h}Y cm</div>
                       </div>
-                      {tryProductId === prod.id && (
-                        <span className="text-primary text-[10px] font-bold flex-shrink-0">Aktif</span>
+                      {placedProduct?.product.id === prod.id && (
+                        <span className="text-primary text-[10px] font-bold flex-shrink-0">✓ Sahnede</span>
                       )}
                     </button>
                   ))}
                 </div>
 
-                {tryProduct && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-[10px] text-blue-700 font-medium">
-                    💡 Şimdi 3D sahnede bir dolabın üzerine gelin — ölçü kontrolü göreceksiniz.
+                {placedProduct && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-[10px] text-blue-700 font-medium space-y-1">
+                    <div>🎯 <strong>{placedProduct.product.name}</strong> sahnede</div>
+                    <div className="text-[9px] text-blue-600">
+                      <span className="inline-flex items-center gap-0.5 mr-2"><span style={{color:"#EF4444"}}>■</span> X yatay</span>
+                      <span className="inline-flex items-center gap-0.5 mr-2"><span style={{color:"#10B981"}}>■</span> Y yükseklik</span>
+                      <span className="inline-flex items-center gap-0.5"><span style={{color:"#3B82F6"}}>■</span> Z derinlik</span>
+                    </div>
+                    <div className="text-[9px] text-blue-500">Renkli okları sürükle — dolabın içinde dene</div>
+                    <button
+                      onClick={() => { setPlacedProduct(null); setTryProductId(null); }}
+                      className="text-[9px] text-red-400 hover:text-red-600 font-semibold"
+                    >
+                      × Sahneden Kaldır
+                    </button>
                   </div>
                 )}
               </div>
@@ -1902,50 +2031,13 @@ function ModuPlanApp() {
 
             {/* Tasarımı Tamamla butonu */}
             <button
-              onClick={() => setShowBuyLinks(v => !v)}
-              className="w-full mt-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-bold transition flex items-center justify-center gap-2"
+              onClick={() => setShowBuyLinks(true)}
+              className="w-full mt-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold transition flex items-center justify-center gap-2"
             >
-              <span>🛒</span>
-              {showBuyLinks ? "Linkleri Gizle" : "Tasarımı Tamamla → Satın Al"}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              Tasarımı Bitir → Ürünleri Ara
             </button>
           </div>
-
-          {/* Satın Al Linkleri */}
-          {showBuyLinks && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-              <div className="text-xs font-bold text-amber-800">Tasarımınız için ürün linkleri</div>
-              <p className="text-[10px] text-amber-700 leading-relaxed">
-                Ürün deneme bölümünden seçtiğiniz kategorideki öneriler aşağıda. Fiyatlar tahmini olup mağazalarda değişebilir.
-              </p>
-              {/* Ürün dene kategorisindeki tüm linkleri listele */}
-              {(TRY_PRODUCTS[tryCategory] || TRY_PRODUCTS.kitchen).slice(0, 5).map(prod => (
-                <div key={prod.id} className="bg-white rounded-xl border border-amber-100 p-2.5">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-base">{prod.icon}</span>
-                    <span className="text-xs font-semibold text-slate-700">{prod.name}</span>
-                    <span className="text-[9px] text-slate-400 ml-auto">{prod.w}×{prod.d}×{prod.h}cm</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {prod.links.map(link => (
-                      <a
-                        key={link.store}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-[10px] font-semibold text-amber-800 transition"
-                      >
-                        <span>{link.store}</span>
-                        <span className="text-amber-600">{link.price}</span>
-                        <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Bu Kombini Kaydet */}
           <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 p-4 space-y-2">
@@ -2087,29 +2179,32 @@ function ModuPlanApp() {
         </div>
       )}
 
-      {/* ── Tasarımı Bitir — Satın Alma Linkleri Modal ──────────────────── */}
+      {/* ── Tasarımı Bitir — Arama Bağlantıları Modal ──────────────────── */}
       {showBuyLinks && (() => {
-        // Her kategoriden kullanılan ürün linklerini topla
-        const usedCats = Object.values(TRY_PRODUCTS).flat();
-        // Tüm ürün linkleri — kategoriye göre grupla
-        const allLinks: { catIcon: string; catLabel: string; prodName: string; links: { store: string; url: string; price: string }[] }[] = [];
-        TRY_CATEGORIES.forEach(cat => {
-          const prods = TRY_PRODUCTS[cat.id] || [];
-          prods.slice(0, 3).forEach(prod => {
-            if (prod.links.length > 0) {
-              allLinks.push({ catIcon: cat.icon, catLabel: cat.label, prodName: prod.name, links: prod.links });
-            }
-          });
+        // Dolapların ölçülerini al — arama sorgularına ekle
+        const cabSizes = cabinets.map(c => {
+          const hCm = Math.round(room.height * c.heightRatio);
+          const wCm = Math.round(hCm * c.widthFactor);
+          const dCm = Math.round(hCm * c.depthFactor);
+          return { label: VARIANT_LABELS[c.variant], w: wCm, h: hCm, d: dCm, material: MATERIALS[c.material].label };
         });
+
+        // Arama URL'i oluştur
+        const makeSearchUrl = (store: "trendyol" | "google", query: string) => {
+          const encoded = encodeURIComponent(query);
+          if (store === "trendyol") return `https://www.trendyol.com/sr?q=${encoded}`;
+          return `https://www.google.com/search?q=${encoded}`;
+        };
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[88vh] overflow-hidden flex flex-col">
               {/* Başlık */}
               <div className="px-6 pt-6 pb-4 border-b border-slate-100">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="font-bold text-xl text-slate-900 tracking-tight">Tasarımınız Hazır! 🎉</div>
-                    <div className="text-sm text-slate-500 mt-0.5">Mobilya & ürün önerileri</div>
+                    <div className="text-sm text-slate-500 mt-0.5">Ölçülerinize uygun ürünleri arayın</div>
                   </div>
                   <button onClick={() => setShowBuyLinks(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none p-1">×</button>
                 </div>
@@ -2128,65 +2223,80 @@ function ModuPlanApp() {
                   </div>
                 </div>
 
-                {/* Modül listesi */}
-                {cabinets.length > 0 && (
+                {/* Modül ölçüleri */}
+                {cabSizes.length > 0 && (
                   <div className="mt-3 space-y-1">
-                    {cabinets.map(c => (
-                      <div key={c.id} className="flex items-center justify-between text-xs text-slate-500 px-1">
+                    {cabSizes.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-slate-500 px-1">
                         <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: c.colorHex, border: "1px solid rgba(0,0,0,0.08)" }} />
-                          {VARIANT_LABELS[c.variant]} · {MATERIALS[c.material].label}
+                          <span className="w-2.5 h-2.5 rounded-sm bg-primary/20 flex-shrink-0" />
+                          {c.label} · {c.material}
                         </span>
-                        <span className="font-medium text-slate-700">{cabinetCost(c, room.height).toLocaleString("tr-TR")} ₺</span>
+                        <span className="font-medium text-slate-600 tabular-nums">{c.w}G × {c.d}D × {c.h}Y cm</span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Ürün önerileri */}
+              {/* Ürün arama bölümü */}
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ürün Önerileri</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ürün Aramaları</div>
+                  <div className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">Ölçülerinize göre özelleştirildi</div>
+                </div>
+
                 {TRY_CATEGORIES.map(cat => {
-                  const prods = (TRY_PRODUCTS[cat.id] || []).filter(p => p.links.length > 0).slice(0, 4);
-                  if (!prods.length) return null;
+                  const prods = (TRY_PRODUCTS[cat.id] || []).slice(0, 5);
                   return (
                     <div key={cat.id}>
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2.5">
                         <span className="text-base">{cat.icon}</span>
                         <span className="text-xs font-bold text-slate-700">{cat.label}</span>
                       </div>
                       <div className="space-y-1.5">
-                        {prods.map(prod => (
-                          <div key={prod.id} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className="w-6 h-6 rounded-lg flex items-center justify-center text-sm flex-shrink-0" style={{ background: prod.color + "33" }}>{prod.icon}</span>
+                        {prods.map(prod => {
+                          // Ölçü bilgisini arama sorgusuna ekle
+                          const sizeHint = `${prod.w}x${prod.d}x${prod.h}cm`;
+                          const fullQuery = `${prod.searchQuery} ${sizeHint}`;
+                          return (
+                            <div key={prod.id} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 flex items-center gap-2.5">
+                              <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0" style={{ background: prod.color + "33" }}>{prod.icon}</span>
                               <div className="flex-1 min-w-0">
                                 <div className="text-xs font-semibold text-slate-700 truncate">{prod.name}</div>
                                 <div className="text-[9px] text-slate-400">{prod.w}G × {prod.d}D × {prod.h}Y cm</div>
                               </div>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {prod.links.map(link => (
+                              <div className="flex gap-1.5 flex-shrink-0">
                                 <a
-                                  key={link.store}
-                                  href={link.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-primary/40 hover:bg-primary/5 text-[10px] font-semibold text-slate-600 hover:text-primary transition group"
+                                  href={makeSearchUrl("trendyol", prod.searchQuery)}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 border border-orange-200 hover:bg-orange-100 text-[10px] font-semibold text-orange-700 transition"
+                                  title={`"${prod.searchQuery}" Trendyol'da ara`}
                                 >
-                                  {link.store}
-                                  <span className="text-slate-400 group-hover:text-primary font-bold">{link.price}</span>
-                                  <svg className="w-2.5 h-2.5 text-slate-300 group-hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                  Trendyol
+                                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                 </a>
-                              ))}
+                                <a
+                                  href={makeSearchUrl("google", prod.searchQuery)}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 text-[10px] font-semibold text-blue-700 transition"
+                                  title={`"${prod.searchQuery}" Google'da ara`}
+                                >
+                                  Google
+                                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                </a>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })}
+
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-[10px] text-amber-700 leading-relaxed">
+                  💡 Arama sonuçlarında dolap ölçülerinizi (<strong>{cabSizes[0]?.w}×{cabSizes[0]?.d} cm</strong>) referans alarak ürün seçebilirsiniz.
+                </div>
               </div>
 
               {/* Alt butonlar */}
