@@ -112,6 +112,7 @@ const COLOR_PALETTES: Record<MaterialType, { label: string; hex: string }[]> = {
 const CM_TO_M = 0.01;
 const SNAP_DISTANCE = 0.4;
 const GRID_STEP_M = 0.05;
+const HANGER_HEIGHT_CM = 120;
 
 const VARIANT_BASE_COST: Record<CabinetVariant, number> = {
   drawerWardrobe: 3200,
