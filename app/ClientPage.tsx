@@ -1,5 +1,5 @@
 'use client';
-
+/// <reference types="@react-three/fiber" />
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Grid, OrbitControls, Html } from "@react-three/drei";
