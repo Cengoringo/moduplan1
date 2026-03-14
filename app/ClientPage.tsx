@@ -970,12 +970,14 @@ function ModuPlanApp() {
   const [tryProductId, setTryProductId] = useState<string | null>(null);
   const [showProductPanel, setShowProductPanel] = useState(false);
   const [showBuyLinks, setShowBuyLinks] = useState(false);
-  // Sahnede serbest konumlanmış ürün — tıklanınca eklenir, 3 eksende sürüklenebilir
+  // Sahnede konumlanmış ürün
   const [placedProduct, setPlacedProduct] = useState<{
     product: TryProduct;
     pos: [number, number, number];
-    dragAxis: "x" | "y" | "z" | null;
   } | null>(null);
+  // Aktif sürükleme ekseni — panelden seçilir, 3D içinde kullanılır
+  const [productAxis, setProductAxis] = useState<"xz" | "y">("xz");
+  const productDragging = React.useRef(false);
 
   const tryProduct = tryProductId
     ? TRY_PRODUCTS[tryCategory]?.find(p => p.id === tryProductId) ?? null
@@ -1363,111 +1365,110 @@ function ModuPlanApp() {
               </group>
 
               <OrbitControls
-                makeDefault enablePan enableZoom
-                enableRotate={!orbitInteracting}
+                makeDefault
+                enableZoom
+                enableRotate={!orbitInteracting && !placedProduct}
+                enablePan={!orbitInteracting && !placedProduct}
                 maxPolarAngle={Math.PI / 2.1}
               />
 
-              {/* ── Ürün Dene — Serbest Sürüklenebilir 3D Ürün ── */}
+              {/* ── Ürün Dene — Tek mesh, tek düzlem, eksen panelden ── */}
               {placedProduct && (() => {
-                const { product: prod, pos, dragAxis } = placedProduct;
+                const { product: prod, pos } = placedProduct;
                 const pW = prod.w * CM_TO_M;
                 const pH = prod.h * CM_TO_M;
                 const pD = prod.d * CM_TO_M;
 
-                // Herhangi bir dolaba yakın mı? Ölçü kontrolü
-                const nearCab = cabinets.find(cab => {
+                // En yakın dolaba göre sığma kontrolü
+                const nearCab = cabinets.reduce<typeof cabinets[0] | null>((best, cab) => {
                   const hCm = room.height * cab.heightRatio;
-                  const wCm = hCm * cab.widthFactor;
-                  const dCm = hCm * cab.depthFactor;
+                  const W = hCm * cab.widthFactor * CM_TO_M;
                   const H = hCm * CM_TO_M;
-                  const W = wCm * CM_TO_M;
-                  const D = dCm * CM_TO_M;
-                  return (
-                    Math.abs(pos[0] - cab.x) < W / 2 + 0.1 &&
-                    Math.abs(pos[2] - cab.z) < D / 2 + 0.1 &&
-                    pos[1] < H + 0.1
-                  );
-                });
-                const fitsW = nearCab ? prod.w <= nearCab.widthFactor * room.height * nearCab.heightRatio : true;
-                const fitsD = nearCab ? prod.d <= nearCab.depthFactor * room.height * nearCab.heightRatio : true;
-                const fitsH = nearCab ? prod.h <= room.height * nearCab.heightRatio : true;
-                const fitsAll = fitsW && fitsD && fitsH;
-                const boxColor = nearCab ? (fitsAll ? "#10B981" : "#EF4444") : "#3B82F6";
+                  const D = hCm * cab.depthFactor * CM_TO_M;
+                  const dist = Math.hypot(pos[0] - cab.x, pos[2] - cab.z);
+                  const inside = Math.abs(pos[0] - cab.x) < W / 2 + pW / 2 + 0.08
+                    && Math.abs(pos[2] - cab.z) < D / 2 + pD / 2 + 0.08
+                    && pos[1] < H + 0.08;
+                  if (inside && (!best || dist < Math.hypot(pos[0] - best.x, pos[2] - best.z))) return cab;
+                  return best;
+                }, null);
 
-                const makeAxisDrag = (axis: "x" | "y" | "z") => ({
-                  onPointerDown: (e: any) => {
-                    e.stopPropagation();
-                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                    setPlacedProduct(prev => prev ? { ...prev, dragAxis: axis } : prev);
-                  },
-                  onPointerMove: (e: any) => {
-                    e.stopPropagation();
-                    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
-                    setPlacedProduct(prev => {
-                      if (!prev || prev.dragAxis !== axis) return prev;
-                      const [px, py, pz] = prev.pos;
-                      const delta = axis === "y"
-                        ? e.movementY * -0.005
-                        : axis === "x"
-                        ? e.movementX * 0.005
-                        : e.movementY * 0.005;
-                      const newPos: [number, number, number] = [
-                        axis === "x" ? px + delta : px,
-                        axis === "y" ? Math.max(0.01, py + delta) : py,
-                        axis === "z" ? pz + delta : pz,
-                      ];
-                      return { ...prev, pos: newPos };
-                    });
-                  },
-                  onPointerUp: (e: any) => {
-                    e.stopPropagation();
-                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-                    setPlacedProduct(prev => prev ? { ...prev, dragAxis: null } : prev);
-                  },
-                });
+                const fits = nearCab
+                  ? prod.w <= Math.round(nearCab.widthFactor * room.height * nearCab.heightRatio)
+                    && prod.d <= Math.round(nearCab.depthFactor * room.height * nearCab.heightRatio)
+                    && prod.h <= Math.round(room.height * nearCab.heightRatio)
+                  : null; // null = dolap yok, kontrol yok
+
+                const boxColor = fits === null ? "#3B82F6" : fits ? "#10B981" : "#EF4444";
 
                 return (
                   <group position={pos}>
-                    {/* Ana ürün kutusu */}
-                    <mesh>
+                    {/* Tıklanabilir / sürüklenebilir ürün kutusu — TEK mesh */}
+                    <mesh
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                        productDragging.current = true;
+                      }}
+                      onPointerMove={(e) => {
+                        e.stopPropagation();
+                        if (!productDragging.current) return;
+                        if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+                        const hit = new THREE.Vector3();
+                        if (productAxis === "xz") {
+                          // Zemin düzlemi — Y sabit, X ve Z serbest
+                          const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pos[1]);
+                          if (!e.ray.intersectPlane(plane, hit)) return;
+                          setPlacedProduct(prev => prev ? { ...prev, pos: [hit.x, prev.pos[1], hit.z] } : prev);
+                        } else {
+                          // Dikey düzlem kameraya dik — Y serbest, XZ sabit
+                          // kamera yönünü al ve buna dik düzlem oluştur
+                          const camDir = e.camera.position.clone().normalize();
+                          camDir.y = 0;
+                          camDir.normalize();
+                          const plane = new THREE.Plane(camDir, -(camDir.dot(new THREE.Vector3(...pos))));
+                          if (!e.ray.intersectPlane(plane, hit)) return;
+                          setPlacedProduct(prev => prev ? { ...prev, pos: [prev.pos[0], Math.max(pH / 2, hit.y), prev.pos[2]] } : prev);
+                        }
+                      }}
+                      onPointerUp={(e) => {
+                        e.stopPropagation();
+                        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                        productDragging.current = false;
+                      }}
+                    >
                       <boxGeometry args={[pW, pH, pD]} />
-                      <meshStandardMaterial color={boxColor} transparent opacity={0.30} />
+                      <meshStandardMaterial
+                        color={boxColor}
+                        transparent
+                        opacity={0.35}
+                        depthWrite={false}
+                      />
                     </mesh>
+
                     {/* Kenar çizgisi */}
-                    <lineSegments>
+                    <lineSegments renderOrder={1}>
                       <edgesGeometry args={[new THREE.BoxGeometry(pW, pH, pD)]} />
-                      <lineBasicMaterial color={boxColor} />
+                      <lineBasicMaterial color={boxColor} linewidth={2} />
                     </lineSegments>
 
-                    {/* X ekseni kırmızı ok — yatay sürükleme */}
-                    <mesh position={[pW / 2 + 0.04, 0, 0]} {...makeAxisDrag("x")}>
-                      <boxGeometry args={[0.06, 0.02, 0.02]} />
-                      <meshStandardMaterial color="#EF4444" />
-                    </mesh>
-                    {/* Y ekseni yeşil ok — yukarı/aşağı */}
-                    <mesh position={[0, pH / 2 + 0.04, 0]} {...makeAxisDrag("y")}>
-                      <boxGeometry args={[0.02, 0.06, 0.02]} />
-                      <meshStandardMaterial color="#10B981" />
-                    </mesh>
-                    {/* Z ekseni mavi ok — ileri/geri */}
-                    <mesh position={[0, 0, pD / 2 + 0.04]} {...makeAxisDrag("z")}>
-                      <boxGeometry args={[0.02, 0.02, 0.06]} />
-                      <meshStandardMaterial color="#3B82F6" />
-                    </mesh>
-
-                    {/* Emoji + bilgi etiketi */}
-                    <Html position={[0, pH / 2 + 0.12, 0]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+                    {/* Etiket */}
+                    <Html
+                      position={[0, pH / 2 + 0.14, 0]}
+                      center
+                      distanceFactor={3}
+                      style={{ pointerEvents: "none" }}
+                    >
                       <div style={{
-                        background: "rgba(15,23,42,0.88)",
+                        background: "rgba(15,23,42,0.92)",
                         color: "white",
                         borderRadius: 10,
-                        padding: "6px 10px",
-                        fontSize: 13,
+                        padding: "5px 9px",
+                        fontSize: 12,
                         fontWeight: 700,
                         whiteSpace: "nowrap",
                         fontFamily: "system-ui,sans-serif",
-                        boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+                        boxShadow: "0 2px 10px rgba(0,0,0,0.4)",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
@@ -1475,28 +1476,22 @@ function ModuPlanApp() {
                       }}>
                         <span style={{ fontSize: 20 }}>{prod.icon}</span>
                         <span style={{ fontSize: 11 }}>{prod.name}</span>
-                        <span style={{ fontSize: 10, opacity: 0.7 }}>{prod.w}×{prod.d}×{prod.h} cm</span>
-                        {nearCab && (
+                        <span style={{ fontSize: 9, opacity: 0.6 }}>{prod.w}×{prod.d}×{prod.h} cm</span>
+                        {fits !== null && (
                           <span style={{
-                            fontSize: 10, fontWeight: 800,
-                            color: fitsAll ? "#6EE7B7" : "#FCA5A5",
-                            marginTop: 2,
+                            fontSize: 10, fontWeight: 800, marginTop: 1,
+                            color: fits ? "#6EE7B7" : "#FCA5A5",
                           }}>
-                            {fitsAll ? "✓ Sığar" : "✗ Sığmaz"}
+                            {fits ? "✓ Sığar" : "✗ Sığmaz"}
                           </span>
                         )}
+                        <span style={{
+                          fontSize: 8, opacity: 0.5, marginTop: 1,
+                          color: productAxis === "xz" ? "#60A5FA" : "#34D399",
+                        }}>
+                          {productAxis === "xz" ? "← → ↑↓ hareket" : "▲▼ yükseklik"}
+                        </span>
                       </div>
-                    </Html>
-
-                    {/* Eksenleri gösteren label */}
-                    <Html position={[pW / 2 + 0.08, 0, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
-                      <div style={{ fontSize: 9, color: "#EF4444", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>X</div>
-                    </Html>
-                    <Html position={[0, pH / 2 + 0.10, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
-                      <div style={{ fontSize: 9, color: "#10B981", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>Y</div>
-                    </Html>
-                    <Html position={[0, 0, pD / 2 + 0.10]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
-                      <div style={{ fontSize: 9, color: "#3B82F6", fontWeight: 700, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px" }}>Z</div>
                     </Html>
                   </group>
                 );
@@ -1798,7 +1793,7 @@ function ModuPlanApp() {
                           setPlacedProduct(null);
                           setTryProductId(null);
                         } else {
-                          setPlacedProduct({ product: prod, pos: startPos, dragAxis: null });
+                          setPlacedProduct({ product: prod, pos: startPos });
                           setTryProductId(prod.id);
                         }
                       }}
@@ -1822,17 +1817,41 @@ function ModuPlanApp() {
                 </div>
 
                 {placedProduct && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-[10px] text-blue-700 font-medium space-y-1">
-                    <div>🎯 <strong>{placedProduct.product.name}</strong> sahnede</div>
-                    <div className="text-[9px] text-blue-600">
-                      <span className="inline-flex items-center gap-0.5 mr-2"><span style={{color:"#EF4444"}}>■</span> X yatay</span>
-                      <span className="inline-flex items-center gap-0.5 mr-2"><span style={{color:"#10B981"}}>■</span> Y yükseklik</span>
-                      <span className="inline-flex items-center gap-0.5"><span style={{color:"#3B82F6"}}>■</span> Z derinlik</span>
+                  <div className="bg-slate-900 rounded-xl px-3 py-2.5 space-y-2">
+                    <div className="text-[10px] text-slate-400 font-semibold">
+                      🎯 <span className="text-white">{placedProduct.product.name}</span> sahnede
                     </div>
-                    <div className="text-[9px] text-blue-500">Renkli okları sürükle — dolabın içinde dene</div>
+                    {/* Hareket modu seçici */}
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => setProductAxis("xz")}
+                        className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition ${
+                          productAxis === "xz"
+                            ? "bg-blue-500 text-white"
+                            : "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                        }`}
+                      >
+                        ↔ Yatay
+                      </button>
+                      <button
+                        onClick={() => setProductAxis("y")}
+                        className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition ${
+                          productAxis === "y"
+                            ? "bg-emerald-500 text-white"
+                            : "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                        }`}
+                      >
+                        ↕ Dikey
+                      </button>
+                    </div>
+                    <div className="text-[9px] text-slate-500">
+                      {productAxis === "xz"
+                        ? "Ürünü sürükle → ileri/geri/yanlara taşır"
+                        : "Ürünü sürükle → yukarı/aşağı taşır"}
+                    </div>
                     <button
                       onClick={() => { setPlacedProduct(null); setTryProductId(null); }}
-                      className="text-[9px] text-red-400 hover:text-red-600 font-semibold"
+                      className="w-full text-[9px] text-red-400 hover:text-red-300 font-semibold py-0.5"
                     >
                       × Sahneden Kaldır
                     </button>
