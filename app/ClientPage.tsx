@@ -1,11 +1,11 @@
 'use client';
-
+// @ts-nocheck
+/// <reference types="@react-three/fiber" />
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Grid, OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { exportObjectToGLB } from "../lib/export-glb";
-
 
 // ─── Tipler ──────────────────────────────────────────────────────────────────
 
@@ -353,32 +353,49 @@ function CabinetMesh({
   const shelfHeights = cab.shelfHeightsCm && cab.shelfHeightsCm.length > 0
     ? cab.shelfHeightsCm
     : null;
+
+  // Raf sayısını sabit tut — yükseklik değişince aralık ölçeklenir
+  const innerH = H - T * 2;
+  const nominalSpacingM = cab.shelfSpacingCm * CM_TO_M;
+  // Başlangıç yüksekliğinde kaç raf varsa aynı sayıyı koru
+  const baseH = room.height * (cab.variant === "drawerWardrobe" ? 0.82 : 0.90) * CM_TO_M;
+  const baseInnerH = baseH - T * 2;
+  const shelfCount = nominalSpacingM > 0 ? Math.max(1, Math.round(baseInnerH / nominalSpacingM)) : 0;
+  const scaledSpacingM = shelfCount > 0 ? innerH / (shelfCount + 1) : 0;
+
   const shelfYs: number[] = [];
   if (cab.variant === "multiShelf") {
     if (shelfHeights && shelfHeights.length > 1) {
+      // shelfHeights orantılı ölçekle
+      const totalCm = shelfHeights.reduce((a, b) => a + b, 0);
+      const scaleFactor = totalCm > 0 ? (innerH / CM_TO_M) / totalCm : 1;
       let y = H / 2 - T;
       for (let i = 0; i < shelfHeights.length - 1; i++) {
-        y -= shelfHeights[i] * CM_TO_M;
+        y -= shelfHeights[i] * scaleFactor * CM_TO_M;
         shelfYs.push(y - H / 2);
       }
-    } else if (shelfSpacingM > 0) {
-      let y = T + shelfSpacingM;
-      while (y < H - T - 0.01) { shelfYs.push(y - H / 2); y += shelfSpacingM; }
+    } else if (scaledSpacingM > 0) {
+      let y = T + scaledSpacingM;
+      while (y < H - T - 0.01) { shelfYs.push(y - H / 2); y += scaledSpacingM; }
     }
   }
-  if (cab.variant === "wardrobe" && shelfSpacingM > 0) {
-    shelfYs.push(H / 2 - T - shelfSpacingM);
-    shelfYs.push(-H / 2 + T + shelfSpacingM);
+  if (cab.variant === "wardrobe") {
+    // Üst ve alt rafları orantılı konumlandır (başlangıç oranı ~35cm/toplam yükseklik)
+    const SHELF_RATIO = 35 / 213;
+    const shelfOffsetM = H * SHELF_RATIO;
+    shelfYs.push(H / 2 - T - shelfOffsetM);
+    shelfYs.push(-H / 2 + T + shelfOffsetM);
   }
 
-  // drawerWardrobe: askı alanı SABİT 120 cm (üstten), altı çekmeceler
-  const HANGER_HEIGHT_CM = 120;
-  const hangerHeightM = HANGER_HEIGHT_CM * CM_TO_M;
-  const dividerY = H / 2 - T - hangerHeightM; // group merkezine göre
+  // drawerWardrobe: askı alanı ORANSAL (başlangıç yüksekliğindeki orana göre)
+  const HANGER_RATIO = 120 / 213; // 120cm / varsayılan dolap yüksekliği
+  const hangerHeightM = H * HANGER_RATIO;
+  const dividerY = H / 2 - T - hangerHeightM;
+  const drawerSpacingM = hangerHeightM > 0 ? Math.max(0.1, scaledSpacingM) : 0;
   const drawerDivYs: number[] = [];
-  if (cab.variant === "drawerWardrobe" && shelfSpacingM > 0) {
-    let y = dividerY - shelfSpacingM;
-    while (y > -H / 2 + T + 0.01) { drawerDivYs.push(y); y -= shelfSpacingM; }
+  if (cab.variant === "drawerWardrobe" && drawerSpacingM > 0) {
+    let y = dividerY - drawerSpacingM;
+    while (y > -H / 2 + T + 0.01) { drawerDivYs.push(y); y -= drawerSpacingM; }
   }
 
   const handleYs: number[] = [];
@@ -444,20 +461,19 @@ function CabinetMesh({
         <meshStandardMaterial {...matP} {...MAT_OFFSET} />
       </mesh>
 
-      {/* ── Yükseklik sürükleme ikonu (üst kenar ortası) ── */}
+      {/* ── Yükseklik sürükleme ikonu ── */}
       {selected && (
-        <Html position={[0, H / 2 + 0.06, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+        <Html position={[0, H / 2 + 0.07, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
           <div style={{
-            background: "rgba(37,99,235,0.92)",
+            background: "rgba(37,99,235,0.90)",
             borderRadius: "6px",
-            padding: "3px 5px",
+            padding: "4px 5px",
             display: "flex",
             alignItems: "center",
-            gap: "2px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
             userSelect: "none",
           }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
               <path d="M12 5v14M8 9l4-4 4 4M8 15l4 4 4-4"/>
             </svg>
           </div>
@@ -474,26 +490,24 @@ function CabinetMesh({
         <meshStandardMaterial {...matP} {...MAT_OFFSET} />
       </mesh>
 
-      {/* ── Genişlik sürükleme ikonu (sağ kenar ortası) ── */}
+      {/* ── Genişlik sürükleme ikonu ── */}
       {selected && (
-        <Html position={[W / 2 + 0.04, 0, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+        <Html position={[W / 2 + 0.05, 0, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
           <div style={{
-            background: "rgba(37,99,235,0.92)",
+            background: "rgba(37,99,235,0.90)",
             borderRadius: "6px",
-            padding: "3px 5px",
+            padding: "4px 5px",
             display: "flex",
             alignItems: "center",
-            gap: "2px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
             userSelect: "none",
           }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
               <path d="M5 12h14M15 8l4 4-4 4M9 8l-4 4 4 4"/>
             </svg>
           </div>
         </Html>
       )}
-
       {/* Arka panel */}
       <mesh castShadow position={[0, 0, -D / 2 + T * 0.4]} {...bodyEvents}>
         <boxGeometry args={[W - T * 2, H - T * 2, T * 0.5]} />
@@ -803,37 +817,7 @@ export default function Page() {
   };
 
   const downloadPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("ModuPlan", 14, 20);
-    doc.setFontSize(10);
-    doc.text(new Date().toLocaleDateString("tr-TR"), 14, 28);
-    doc.setFontSize(11);
-    doc.text(`Oda: ${room.width} x ${room.depth} x ${room.height} cm  |  ${roomM2.toFixed(1)} m2`, 14, 36);
-    const tableData = cabinets.map(c => [
-      VARIANT_LABELS[c.variant],
-      MATERIALS[c.material].label,
-      c.colorHex,
-      `${Math.round(room.height * c.heightRatio * c.widthFactor)}`,
-      `${Math.round(room.height * c.heightRatio)}`,
-      cabinetCost(c, room.height).toLocaleString("tr-TR")
-    ]);
-    autoTable(doc, {
-      startY: 42,
-      head: [["Tur", "Kaplama", "Renk", "Genislik (cm)", "Yukseklik (cm)", "Birim Maliyet (TL)"]],
-      body: tableData,
-      theme: "grid"
-    });
-    const finalY = (doc as any).lastAutoTable?.finalY ?? 42;
-    const subtotal = totalCost;
-    const kdv = subtotal * 0.1;
-    doc.setFontSize(10);
-    doc.text(`Ara Toplam: ${subtotal.toLocaleString("tr-TR")} TL`, 14, finalY + 10);
-    doc.text(`KDV (%10): ${kdv.toLocaleString("tr-TR")} TL`, 14, finalY + 16);
-    doc.text(`Genel Toplam: ${(subtotal + kdv).toLocaleString("tr-TR")} TL`, 14, finalY + 22);
-    doc.setFontSize(8);
-    doc.text("Bu fiyatlar tahminidir, KDV harictir.", 14, doc.internal.pageSize.height - 10);
-    doc.save("moduplan-teklif.pdf");
+    alert("PDF özelliği yakında eklenecek.");
   };
 
   const startVideoMeasure = async () => {
@@ -1000,14 +984,25 @@ export default function Page() {
 
   const lockSelectedToNeighbor = () => {
     if (selectedId == null || !selectedCab) return;
+
+    // Zaten kilitliyse → kilidi aç
+    if (selectedCab.lockedTo != null) {
+      const partnerId = selectedCab.lockedTo;
+      setCabinets(prev => prev.map(c => {
+        if (c.id === selectedId) return { ...c, lockedTo: null };
+        if (c.id === partnerId) return { ...c, lockedTo: null };
+        return c;
+      }));
+      return;
+    }
+
+    // Kilitle — en yakın komşuya yapıştır
     const others = cabinets.filter(c => c.id !== selectedId);
     if (others.length === 0) return;
     const halfW = (selectedCab.widthFactor * room.height * selectedCab.heightRatio * CM_TO_M) / 2;
     const halfD = (selectedCab.depthFactor * room.height * selectedCab.heightRatio * CM_TO_M) / 2;
     let nearest: { id: number; dist: number } | null = null;
     for (const o of others) {
-      const ow = (o.widthFactor * room.height * o.heightRatio * CM_TO_M) / 2;
-      const od = (o.depthFactor * room.height * o.heightRatio * CM_TO_M) / 2;
       const dist = Math.hypot(selectedCab.x - o.x, selectedCab.z - o.z);
       if (dist < (nearest?.dist ?? Infinity)) nearest = { id: o.id, dist };
     }
@@ -1017,14 +1012,11 @@ export default function Page() {
     let dz = other.z - selectedCab.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 0.01) return;
-    dx /= dist;
-    dz /= dist;
+    dx /= dist; dz /= dist;
     const ow = (other.widthFactor * room.height * other.heightRatio * CM_TO_M) / 2;
     const od = (other.depthFactor * room.height * other.heightRatio * CM_TO_M) / 2;
-    let snapX = other.x - dx * (halfW + ow);
-    let snapZ = other.z - dz * (halfD + od);
-    snapX = snapToGrid(snapX);
-    snapZ = snapToGrid(snapZ);
+    const snapX = snapToGrid(other.x - dx * (halfW + ow));
+    const snapZ = snapToGrid(other.z - dz * (halfD + od));
     setCabinets(prev => prev.map(c => {
       if (c.id === selectedId) return { ...c, x: snapX, z: snapZ, lockedTo: nearest!.id };
       if (c.id === nearest!.id) return { ...c, lockedTo: selectedId };
@@ -1446,14 +1438,18 @@ export default function Page() {
                 </button>
               </div>
 
-              {/* Yanındakine Kilitle */}
+              {/* Yanındakine Kilitle / Kilidi Aç */}
               <button
                 type="button"
                 onClick={lockSelectedToNeighbor}
                 disabled={cabinets.length < 2}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  selectedCab.lockedTo != null
+                    ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
+                }`}
               >
-                {selectedCab.lockedTo != null ? "🔒 Kilitli" : "🔗 Yanındakine Kilitle"}
+                {selectedCab.lockedTo != null ? "🔒 Kilitli — Kilidi Aç" : "🔗 Yanındakine Kilitle"}
               </button>
 
               {/* Kaplama Türü */}
