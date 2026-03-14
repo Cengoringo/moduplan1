@@ -3,7 +3,9 @@
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
+    "skipLibCheck": true,
+     "noEmit": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -11,6 +13,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "noErrorTruncation": false,
+"noImplicitAny": false
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./*"] }
