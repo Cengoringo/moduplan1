@@ -112,7 +112,6 @@ const COLOR_PALETTES: Record<MaterialType, { label: string; hex: string }[]> = {
 const CM_TO_M = 0.01;
 const SNAP_DISTANCE = 0.4;
 const GRID_STEP_M = 0.05;
-const HANGER_HEIGHT_CM = 120;
 
 const VARIANT_BASE_COST: Record<CabinetVariant, number> = {
   drawerWardrobe: 3200,
@@ -515,13 +514,122 @@ function CabinetMesh({
         <meshStandardMaterial {...matInner} {...MAT_OFFSET} />
       </mesh>
 
-      {/* ── Kapak (hasDoor) ────────────────────────────────────────────────── */}
-      {cab.hasDoor && (
-        <mesh castShadow position={[0, 0, D / 2 + T / 2]}>
-          <boxGeometry args={[W - T * 2, H - T * 2, T]} />
-          <meshStandardMaterial {...matP} {...MAT_OFFSET} />
-        </mesh>
-      )}
+      {/* ── Kapak — Klasik göbekli çerçeve kapak ────────────────────────────── */}
+      {cab.hasDoor && (() => {
+        const doorW   = W - T * 2;
+        const doorH   = H - T * 2;
+        const doorT   = T * 1.8;
+        const isDouble = widthCm > 45;
+        const gap      = 0.005;
+
+        // Renk tonları
+        const frameC  = shadeColor(color, -18);  // çerçeve koyu
+        const panelC  = shadeColor(color, +10);  // göbek açık
+        const shadowC = shadeColor(color, -35);  // iç gölge
+        const lightC  = shadeColor(color, +22);  // ışık vurgusu
+
+        // Klasik göbekli kapak bileşeni
+        const ClassicDoor = ({ x, w, handleSide }: { x: number; w: number; handleSide: "left" | "right" }) => {
+          const fw  = 0.038;  // çerçeve genişliği
+          const fz  = doorT;
+          const pz  = doorT - 0.006; // göbek biraz içeride
+          const pw  = w - fw * 2 - 0.012;
+          const ph  = doorH - fw * 2 - 0.012;
+
+          // Yatay iki bölüm (üst + alt göbek)
+          const topH  = ph * 0.42;
+          const botH  = ph - topH - 0.010;
+          const topY  =  (botH / 2 + 0.005);
+          const botY  = -(topH / 2 + 0.005);
+
+          return (
+            <group position={[x, 0, D / 2 + fz / 2]}>
+
+              {/* ── Ana kapak gövdesi ── */}
+              <mesh castShadow receiveShadow>
+                <boxGeometry args={[w, doorH, fz]} />
+                <meshStandardMaterial color={frameC} metalness={mat.metalness} roughness={mat.roughness + 0.05} {...MAT_OFFSET} />
+              </mesh>
+
+              {/* ── Üst göbek ── */}
+              {/* Gölge (biraz büyük, koyu) */}
+              <mesh position={[0, topY, pz / 2 - 0.001]}>
+                <boxGeometry args={[pw + 0.006, topH + 0.006, 0.001]} />
+                <meshStandardMaterial color={shadowC} {...MAT_OFFSET} />
+              </mesh>
+              {/* Göbek yüzeyi */}
+              <mesh position={[0, topY, pz / 2]}>
+                <boxGeometry args={[pw, topH, 0.005]} />
+                <meshStandardMaterial color={panelC} metalness={mat.metalness} roughness={mat.roughness - 0.05} {...MAT_OFFSET} />
+              </mesh>
+              {/* Göbek üst ışık çizgisi */}
+              <mesh position={[0, topY + topH / 2 - 0.003, pz / 2 + 0.003]}>
+                <boxGeometry args={[pw, 0.004, 0.003]} />
+                <meshStandardMaterial color={lightC} {...MAT_OFFSET} />
+              </mesh>
+              {/* Göbek sol ışık çizgisi */}
+              <mesh position={[-pw / 2 + 0.003, topY, pz / 2 + 0.003]}>
+                <boxGeometry args={[0.004, topH, 0.003]} />
+                <meshStandardMaterial color={lightC} {...MAT_OFFSET} />
+              </mesh>
+
+              {/* ── Alt göbek ── */}
+              <mesh position={[0, botY, pz / 2 - 0.001]}>
+                <boxGeometry args={[pw + 0.006, botH + 0.006, 0.001]} />
+                <meshStandardMaterial color={shadowC} {...MAT_OFFSET} />
+              </mesh>
+              <mesh position={[0, botY, pz / 2]}>
+                <boxGeometry args={[pw, botH, 0.005]} />
+                <meshStandardMaterial color={panelC} metalness={mat.metalness} roughness={mat.roughness - 0.05} {...MAT_OFFSET} />
+              </mesh>
+              <mesh position={[0, botY + botH / 2 - 0.003, pz / 2 + 0.003]}>
+                <boxGeometry args={[pw, 0.004, 0.003]} />
+                <meshStandardMaterial color={lightC} {...MAT_OFFSET} />
+              </mesh>
+              <mesh position={[-pw / 2 + 0.003, botY, pz / 2 + 0.003]}>
+                <boxGeometry args={[0.004, botH, 0.003]} />
+                <meshStandardMaterial color={lightC} {...MAT_OFFSET} />
+              </mesh>
+
+              {/* ── Metal kulp ── */}
+              <group position={[
+                handleSide === "right" ? w * 0.36 : -w * 0.36,
+                0,
+                fz / 2 + 0.016
+              ]}>
+                {/* Kulp çubuğu */}
+                <mesh>
+                  <boxGeometry args={[0.010, 0.090, 0.010]} />
+                  <meshStandardMaterial color="#B0B8C0" metalness={0.92} roughness={0.08} {...MAT_OFFSET} />
+                </mesh>
+                {/* Üst rozet */}
+                <mesh position={[0,  0.050, -0.004]}>
+                  <cylinderGeometry args={[0.008, 0.008, 0.012, 10]} />
+                  <meshStandardMaterial color="#9CA3AF" metalness={0.88} roughness={0.12} {...MAT_OFFSET} />
+                </mesh>
+                {/* Alt rozet */}
+                <mesh position={[0, -0.050, -0.004]}>
+                  <cylinderGeometry args={[0.008, 0.008, 0.012, 10]} />
+                  <meshStandardMaterial color="#9CA3AF" metalness={0.88} roughness={0.12} {...MAT_OFFSET} />
+                </mesh>
+              </group>
+
+            </group>
+          );
+        };
+
+        if (isDouble) {
+          const halfW = (doorW - gap) / 2;
+          return (
+            <>
+              <ClassicDoor x={-(halfW / 2 + gap / 2)} w={halfW} handleSide="right" />
+              <ClassicDoor x={ (halfW / 2 + gap / 2)} w={halfW} handleSide="left"  />
+            </>
+          );
+        }
+
+        return <ClassicDoor x={0} w={doorW} handleSide="right" />;
+      })()}
 
       {/* ── Raflar (çift tıkla bölüm yüksekliğini düzenle) ─────────────────── */}
       {cab.variant === "multiShelf" && shelfYs.map((yPos, i) => {
@@ -584,8 +692,8 @@ function CabinetMesh({
         </mesh>
       ))}
 
-      {/* ── Çekmece tutamaçları (kapaksız: önde; kapaklı: kapak üzerinde) ─── */}
-      {handleYs.map((yPos, i) => (
+      {/* ── Çekmece tutamaçları (kapak varsa gizle) ─── */}
+      {!cab.hasDoor && handleYs.map((yPos, i) => (
         <group key={`h${i}`} position={[0, yPos, cab.hasDoor ? D / 2 + T + 0.003 : D / 2 + 0.003]}>
           <mesh>
             <boxGeometry args={[W * 0.3, 0.013, 0.013]} />
