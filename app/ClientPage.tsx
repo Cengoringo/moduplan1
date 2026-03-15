@@ -1627,13 +1627,123 @@ function ModuPlanApp() {
     });
   };
 
+  // ── Akıllı dolap yerleşim algoritması ───────────────────────────────────
+  const findBestWallPlacement = (room: RoomSize, furniture: typeof obFurniture) => {
+    const RW = room.width, RD = room.depth;
+    const DEPTH_CM = Math.min(65, room.depth * 0.22); // Dolap derinliği max %22 oda derinliği
+
+    // 4 duvarı analiz et: arka(N), sol(W), sağ(E), ön(S)
+    // Her duvar için: o duvara bitişik eşyaların kapladığı aralıkları bul
+    const walls = [
+      { id: "N", axis: "x" as const, fixedVal: 0,  range: [0, RW], wallZ: 0,         wallX: RW/2 },
+      { id: "S", axis: "x" as const, fixedVal: RD, range: [0, RW], wallZ: RD,        wallX: RW/2 },
+      { id: "W", axis: "y" as const, fixedVal: 0,  range: [0, RD], wallZ: RD/2,      wallX: 0    },
+      { id: "E", axis: "y" as const, fixedVal: RW, range: [0, RD], wallZ: RD/2,      wallX: RW   },
+    ];
+
+    let bestWall = walls[0]; // default: arka duvar
+    let bestFreeLen = 0;
+    let bestCenter = RW / 2;
+
+    for (const wall of walls) {
+      // Bu duvara yakın (<50cm) eşyaları bul
+      const occupied: [number, number][] = [];
+      furniture.forEach(f => {
+        const def = OB_FURN_DEFS[f.type];
+        if (!def || f.type === "cab-mark") return;
+        let near = false;
+        let start = 0, end = 0;
+        if (wall.id === "N") { near = f.ry < 50; start = f.rx; end = f.rx + f.w; }
+        if (wall.id === "S") { near = (f.ry + f.h) > RD - 50; start = f.rx; end = f.rx + f.w; }
+        if (wall.id === "W") { near = f.rx < 50; start = f.ry; end = f.ry + f.h; }
+        if (wall.id === "E") { near = (f.rx + f.w) > RW - 50; start = f.ry; end = f.ry + f.h; }
+        if (near) occupied.push([start, end]);
+      });
+      // Boşlukları bul
+      const sorted = [...occupied].sort((a, b) => a[0] - b[0]);
+      const rangeEnd = wall.id === "N" || wall.id === "S" ? RW : RD;
+      let pos = 0;
+      let maxFree = 0, maxCenter = rangeEnd / 2;
+      for (const [s, e] of sorted) {
+        if (s - pos > maxFree) { maxFree = s - pos; maxCenter = (pos + s) / 2; }
+        pos = Math.max(pos, e);
+      }
+      if (rangeEnd - pos > maxFree) { maxFree = rangeEnd - pos; maxCenter = (pos + rangeEnd) / 2; }
+      if (maxFree > bestFreeLen) { bestFreeLen = maxFree; bestWall = wall; bestCenter = maxCenter; }
+    }
+
+    // Dolap boyutlarını en iyi boşluğa göre ayarla
+    const hr = Math.min(0.98, (room.height - 5) / room.height);
+    const heightCm = room.height * hr;
+    const cabWidth = Math.min(bestFreeLen * 0.9, room.width * 0.85);
+    const wf = cabWidth / heightCm;
+    const df = DEPTH_CM / heightCm;
+
+    // 3D pozisyon (room merkezinden)
+    let x3d = 0, z3d = 0;
+    const halfW = room.width * CM_TO_M / 2;
+    const halfD = room.depth * CM_TO_M / 2;
+    const cabDepthM = DEPTH_CM * CM_TO_M;
+
+    if (bestWall.id === "N") { x3d = (bestCenter - RW/2) * CM_TO_M; z3d = -halfD + cabDepthM/2 + 0.02; }
+    if (bestWall.id === "S") { x3d = (bestCenter - RW/2) * CM_TO_M; z3d =  halfD - cabDepthM/2 - 0.02; }
+    if (bestWall.id === "W") { x3d = -halfW + cabDepthM/2 + 0.02; z3d = (bestCenter - RD/2) * CM_TO_M; }
+    if (bestWall.id === "E") { x3d =  halfW - cabDepthM/2 - 0.02; z3d = (bestCenter - RD/2) * CM_TO_M; }
+
+    const rotation = (bestWall.id === "W" || bestWall.id === "E") ? Math.PI / 2 : 0;
+
+    return { x: x3d, z: z3d, wf, df, hr, rotation, wallId: bestWall.id, freeLen: bestFreeLen };
+  };
+
   const obFinish = () => {
     obStopCamera();
     const newRoom = obRoom;
-    const layout = buildTemplateLayout(obTemplate ?? "custom", newRoom, obSections);
+
+    // Boş alan analizi ile en iyi duvara otomatik yerleştir
+    const placement = findBestWallPlacement(newRoom, obFurniture);
+
+    const hr = placement.hr;
+    const customSects: CustomSection[] = obSections.map(s => ({
+      id: s.id, type: s.type as CustomSection["type"], heightCm: s.heightCm
+    }));
+
+    const defaultSections: CustomSection[] = obTemplate === "wardrobe" ? [
+      { id: 1, type: "hanger", heightCm: Math.round(newRoom.height * hr * 0.50) },
+      { id: 2, type: "shelf",  heightCm: Math.round(newRoom.height * hr * 0.25) },
+      { id: 3, type: "drawer", heightCm: Math.round(newRoom.height * hr * 0.25) },
+    ] : obTemplate === "kitchen" ? [
+      { id: 1, type: "shelf",  heightCm: Math.round(newRoom.height * hr * 0.35) },
+      { id: 2, type: "shelf",  heightCm: Math.round(newRoom.height * hr * 0.30) },
+      { id: 3, type: "drawer", heightCm: Math.round(newRoom.height * hr * 0.18) },
+      { id: 4, type: "drawer", heightCm: Math.round(newRoom.height * hr * 0.17) },
+    ] : obTemplate === "shoe" ? [
+      { id: 1, type: "shoe-rack", heightCm: Math.round(newRoom.height * hr * 0.25) },
+      { id: 2, type: "shoe-rack", heightCm: Math.round(newRoom.height * hr * 0.25) },
+      { id: 3, type: "shelf",     heightCm: Math.round(newRoom.height * hr * 0.25) },
+      { id: 4, type: "open",      heightCm: Math.round(newRoom.height * hr * 0.25) },
+    ] : [
+      { id: 1, type: "hanger", heightCm: Math.round(newRoom.height * hr * 0.55) },
+      { id: 2, type: "shelf",  heightCm: Math.round(newRoom.height * hr * 0.25) },
+      { id: 3, type: "drawer", heightCm: Math.round(newRoom.height * hr * 0.20) },
+    ];
+
+    const sections = customSects.length > 0 ? customSects : defaultSections;
+    const base = createCabinet(1, "custom", sections);
+
+    const layout: Cabinet[] = [{
+      ...base,
+      id: 1,
+      x: placement.x,
+      z: placement.z,
+      heightRatio: placement.hr,
+      widthFactor: placement.wf,
+      depthFactor: placement.df,
+      rotation: placement.rotation,
+    }];
+
     setRoom(newRoom);
     setCabinets(layout);
-    setSelectedId(layout[0]?.id ?? null);
+    setSelectedId(1);
     setShowOnboarding(false);
   };
 
@@ -1866,7 +1976,7 @@ function ModuPlanApp() {
   const selectedCab = cabinets.find(c => c.id === selectedId) ?? null;
 
   // ── Onboarding UI bileşenleri ────────────────────────────────────────────
-  const OB_STEP_LABELS = ["Ölçüm", "Oda Planı", "Şablon", "İç Düzen", "Hazır"];
+  const OB_STEP_LABELS = ["Alan Ölçüsü", "Mevcut Eşyalar", "Şablon Seç", "İç Düzen", "Hazır"];
   const OB_TYPE_ICONS: Record<string, string> = { shelf:"Raf", drawer:"Çekmece", hanger:"Askılık", open:"Açık" };
 
   const obRenderOnboarding = () => {
@@ -1941,16 +2051,26 @@ function ModuPlanApp() {
             {obStep === 1 && (
               <>
                 <div>
-                  <div className="text-base font-semibold text-slate-800 mb-1">Oda planını oluştur</div>
-                  <div className="text-xs text-slate-500 leading-relaxed">Mevcut eşyaları yerleştir — boş alanı gör, dolap için köşe belirle.</div>
+                  <div className="text-base font-semibold text-slate-800 mb-1">Odadaki mevcut eşyaları ekle</div>
+                  <div className="text-xs text-slate-500 leading-relaxed">
+                    Koltuk, yatak, beyaz eşya varsa yerleştir. ModuPlan boş alanı otomatik algılayıp dolabı en uygun duvara yerleştirecek.
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[["Toplam", stats.total + " m²", ""], ["Dolu", stats.used + " m²", ""], ["Boş", stats.free + " m²", "text-emerald-600"]].map(([l, v, cls]) => (
-                    <div key={l as string} className="bg-slate-50 rounded-lg px-2 py-2">
-                      <div className="text-[10px] text-slate-400">{l}</div>
-                      <div className={`text-sm font-medium text-slate-700 ${cls}`}>{v}</div>
-                    </div>
-                  ))}
+                {/* Boşluk analiz çubuğu */}
+                <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Alan doluluk oranı</span>
+                    <span className="font-semibold text-slate-700">{stats.used} / {stats.total} m²</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2">
+                    <div className="bg-emerald-500 h-2 rounded-full transition-all" style={{ width: `${Math.min(100, (parseFloat(stats.used) / parseFloat(stats.total)) * 100)}%` }} />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1">
+                    <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                    {parseFloat(stats.free) > 0
+                      ? `${stats.free} m² boş alan tespit edildi — dolap otomatik konumlanacak`
+                      : "Eşya ekleyince boş alan analizi yapılacak"}
+                  </div>
                 </div>
                 <div className="flex border border-slate-200 rounded-xl overflow-hidden">
                   <button onClick={() => { setObMeasureMode("camera"); obSimulateScan(); }}
@@ -2118,7 +2238,7 @@ function ModuPlanApp() {
               disabled={obStep === 2 && !obTemplate}
               onClick={() => { if (obStep < 4) setObStep(prev => (prev + 1) as 0|1|2|3|4); else obFinish(); }}
               className="flex-1 py-2.5 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition">
-              {obStep === 4 ? "3D Editörü Aç →" : obStep === 1 ? "Şablon Seçimine Geç →" : "Devam →"}
+              {obStep === 4 ? "3D Editörü Aç →" : obStep === 0 ? "Eşya Yerleşimine Geç →" : obStep === 1 ? "Şablon Seç →" : obStep === 2 ? "İç Düzen →" : "Devam →"}
             </button>
           </div>
         </div>
@@ -2173,6 +2293,100 @@ function ModuPlanApp() {
 
         {/* ── 3D Sahne ──────────────────────────────────────────────────── */}
         <section className="flex-1 relative">
+          {/* ── HUD Overlay — Kullanıcı yönlendirme ── */}
+          <div className="absolute top-3 left-3 right-3 z-10 pointer-events-none flex items-start justify-between gap-2">
+            {/* Sol: Mevcut adım ipucu */}
+            <div className="bg-white/90 backdrop-blur rounded-xl px-3 py-2 shadow-sm border border-slate-100 max-w-xs">
+              {!selectedId && cabinets.length === 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-primary text-[10px] font-bold">1</span>
+                  </div>
+                  <span className="text-[11px] text-slate-600">Sağdan <strong>Dolap İçi Düzenleyici</strong> ile bölüm ekle, ardından 3D'de görünür</span>
+                </div>
+              )}
+              {cabinets.length > 0 && !selectedId && (
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" fill="none" stroke="#2563EB" strokeWidth="2" viewBox="0 0 24 24" className="flex-shrink-0"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+                  <span className="text-[11px] text-slate-600">Dolaba <strong>tıkla</strong> → seç → kenarlardan boyutunu ayarla</span>
+                </div>
+              )}
+              {selectedId && !placedProduct && (
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" fill="none" stroke="#10B981" strokeWidth="2" viewBox="0 0 24 24" className="flex-shrink-0"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                  <span className="text-[11px] text-slate-600">
+                    <strong>↔ Sağ kenar</strong> genişlik &nbsp;·&nbsp;
+                    <strong>↕ Üst kenar</strong> yükseklik &nbsp;·&nbsp;
+                    <strong className="text-emerald-600">◆ Ön yüzey</strong> derinlik
+                  </span>
+                </div>
+              )}
+              {placedProduct && (
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{placedProduct.product.icon}</span>
+                  <span className="text-[11px] text-slate-600">
+                    <strong>{placedProduct.product.name}</strong> — sürükle yerleştir
+                    {placedProduct.product.d > 0 && selectedId && (() => {
+                      const cab = cabinets.find(c => c.id === selectedId);
+                      if (!cab) return null;
+                      const cabD = Math.round(room.height * cab.heightRatio * cab.depthFactor);
+                      const fits = placedProduct.product.d <= cabD;
+                      return <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold ${fits ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>{fits ? `✓ Sığar (${cabD}cm)` : `✗ Sığmaz (${cabD}cm)`}</span>;
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+            {/* Sağ: Hızlı eylemler */}
+            <div className="flex gap-1.5 pointer-events-auto">
+              <button onClick={() => setShowOnboarding(true)}
+                className="bg-white/90 backdrop-blur rounded-xl px-3 py-2 shadow-sm border border-slate-100 text-[11px] text-slate-600 hover:bg-white hover:border-primary/30 transition flex items-center gap-1.5">
+                <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+                Oda Planı
+              </button>
+              {selectedId && (
+                <button onClick={() => {
+                  const hr = Math.min(0.98, (room.height-5)/room.height);
+                  addCabinet("custom");
+                }}
+                  className="bg-primary/90 backdrop-blur rounded-xl px-3 py-2 shadow-sm text-[11px] text-white hover:bg-primary transition flex items-center gap-1.5">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Yeni Dolap
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Alt HUD: seçili dolap özet bilgisi */}
+          {selectedId && (() => {
+            const cab = cabinets.find(c => c.id === selectedId);
+            if (!cab) return null;
+            const hCm = Math.round(room.height * cab.heightRatio);
+            const wCm = Math.round(hCm * cab.widthFactor);
+            const dCm = Math.round(hCm * cab.depthFactor);
+            return (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                <div className="bg-slate-900/80 backdrop-blur rounded-xl px-4 py-2 shadow-lg flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-white text-[11px] font-semibold">Dolap #{cab.id}</span>
+                  </div>
+                  <div className="flex gap-3 text-[10px]">
+                    <span className="text-blue-300">G: <strong>{wCm} cm</strong></span>
+                    <span className="text-blue-300">Y: <strong>{hCm} cm</strong></span>
+                    <span className="text-emerald-300">D: <strong>{dCm} cm</strong></span>
+                  </div>
+                  {cab.customSections && cab.customSections.length > 0 && (
+                    <div className="flex gap-1">
+                      {cab.customSections.map(s => {
+                        const dots: Record<string, string> = { shelf:"#60A5FA", drawer:"#FBBF24", "deep-drawer":"#FB923C", hanger:"#4ADE80", "jewelry-drawer":"#E879F9", "shoe-rack":"#818CF8", open:"#94A3B8" };
+                        return <div key={s.id} className="w-1.5 h-3 rounded-sm" style={{ background: dots[s.type] ?? "#94a3b8" }} title={s.type} />;
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden" style={{ background: "#F8F9FA" }}>
             <Canvas shadows camera={{ position: [4, 4, 4], fov: 45 }}>
               <color attach="background" args={["#F8F9FA"]} />
@@ -2802,13 +3016,22 @@ function ModuPlanApp() {
                     <button
                       key={prod.id}
                       onClick={() => {
-                        // Ürüne tıklanınca sahnede dolabın önüne yerleştir
-                        const firstCab = cabinets[0];
-                        const startPos: [number, number, number] = firstCab
-                          ? [firstCab.x, (room.height * firstCab.heightRatio * CM_TO_M) / 2, firstCab.z + (firstCab.depthFactor * room.height * firstCab.heightRatio * CM_TO_M) / 2 + 0.1]
-                          : [0, prod.h * CM_TO_M / 2, 0.5];
+                        // Ürüne tıklanınca seçili (veya ilk) dolabın önüne derinlik göz önüne alınarak yerleştir
+                        const targetCab = cabinets.find(c => c.id === selectedId) ?? cabinets[0];
+                        let startPos: [number, number, number];
+                        if (targetCab) {
+                          const hCm = room.height * targetCab.heightRatio;
+                          const dM = hCm * targetCab.depthFactor * CM_TO_M;
+                          const pH = (prod.rotated ?? false) ? prod.w : prod.h;
+                          startPos = [
+                            targetCab.x,
+                            pH * CM_TO_M / 2, // zemin üstünde
+                            targetCab.z + dM / 2 + prod.d * CM_TO_M / 2 + 0.05,
+                          ];
+                        } else {
+                          startPos = [0, prod.h * CM_TO_M / 2, 0.5];
+                        }
                         if (placedProduct?.product.id === prod.id) {
-                          // Zaten aynı ürün — kaldır
                           setPlacedProduct(null);
                           setTryProductId(null);
                         } else {
