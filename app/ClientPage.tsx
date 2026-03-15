@@ -23,7 +23,7 @@ type MaterialType = "mdflam" | "lake" | "akrilik";
 
 type CustomSection = {
   id: number;
-  type: "shelf" | "drawer" | "hanger" | "open";
+  type: "shelf" | "drawer" | "deep-drawer" | "hanger" | "jewelry-drawer" | "shoe-rack" | "open";
   heightCm: number;
 };
 
@@ -2353,157 +2353,245 @@ function ModuPlanApp() {
             </button>
           </div>
 
-          {/* Modül Ekle */}
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 p-4 space-y-2">
-            <div className="text-xs font-semibold text-slate-500 mb-1">Modül Ekle</div>
-
-            {/* Hazır modüller */}
-            {(["drawerWardrobe", "multiShelf", "wardrobe"] as CabinetVariant[]).map(v => (
-              <button
-                key={v}
-                onClick={() => addCabinet(v)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-primary/5 hover:border-primary/30 text-xs transition group"
-              >
-                <span className="text-slate-500 group-hover:text-primary transition flex-shrink-0">
-                  {VARIANT_SVG[v]}
-                </span>
-                <span className="font-medium text-slate-700">{VARIANT_LABELS[v]}</span>
-                <span className="ml-auto text-[10px] text-slate-400">+ Ekle</span>
-              </button>
-            ))}
-
-            {/* Özel Modül Tasarla */}
-            <div className="pt-1 border-t border-slate-100">
-              <button
-                onClick={() => setShowCustomBuilder(v => !v)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-xs transition group ${
-                  showCustomBuilder
-                    ? "border-primary/40 bg-primary/5 text-primary"
-                    : "border-dashed border-slate-300 hover:border-primary/40 hover:bg-primary/5 text-slate-500 hover:text-primary"
-                }`}
-              >
-                <span className="flex-shrink-0">{VARIANT_SVG.custom}</span>
-                <span className="font-medium">Özel Modül Tasarla</span>
-                <span className="ml-auto text-[10px] opacity-60">{showCustomBuilder ? "▲" : "▼"}</span>
-              </button>
-
-              {showCustomBuilder && (
-                <div className="mt-3 space-y-2">
-                  {/* Toplam yükseklik göstergesi */}
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
-                    <span>Toplam</span>
-                    <span className={`font-semibold ${
-                      customSections.reduce((s, sec) => s + sec.heightCm, 0) > 260
-                        ? "text-red-500" : "text-slate-600"
-                    }`}>
-                      {customSections.reduce((s, sec) => s + sec.heightCm, 0)} cm
-                    </span>
-                  </div>
-
-                  {/* Bölüm listesi */}
-                  <div className="space-y-1.5">
-                    {customSections.map((sec, idx) => (
-                      <div key={sec.id} className="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2 py-1.5 border border-slate-200">
-                        {/* Tür seçici */}
-                        <select
-                          value={sec.type}
-                          onChange={e => setCustomSections(prev => prev.map(s =>
-                            s.id === sec.id ? { ...s, type: e.target.value as CustomSection["type"] } : s
-                          ))}
-                          className="text-[10px] bg-white border border-slate-200 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40 text-slate-600 flex-shrink-0"
-                        >
-                          <option value="shelf">Raf</option>
-                          <option value="drawer">Çekmece</option>
-                          <option value="hanger">Askılık</option>
-                          <option value="open">Açık</option>
-                        </select>
-
-                        {/* Yükseklik input */}
-                        <input
-                          type="number"
-                          min={10}
-                          max={250}
-                          value={sec.heightCm}
-                          onChange={e => {
-                            const v = parseInt(e.target.value) || 10;
-                            setCustomSections(prev => prev.map(s =>
-                              s.id === sec.id ? { ...s, heightCm: Math.max(10, Math.min(250, v)) } : s
-                            ));
-                          }}
-                          className="w-14 text-[10px] text-center bg-white border border-slate-200 rounded-lg px-1 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40 text-slate-700 font-semibold"
-                        />
-                        <span className="text-[10px] text-slate-400 flex-shrink-0">cm</span>
-
-                        {/* Yukarı/aşağı */}
-                        <div className="flex flex-col gap-0.5 ml-auto flex-shrink-0">
-                          <button
-                            disabled={idx === 0}
-                            onClick={() => setCustomSections(prev => {
-                              const arr = [...prev];
-                              [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
-                              return arr;
-                            })}
-                            className="text-slate-300 hover:text-slate-600 disabled:opacity-20 leading-none text-[9px]"
-                          >▲</button>
-                          <button
-                            disabled={idx === customSections.length - 1}
-                            onClick={() => setCustomSections(prev => {
-                              const arr = [...prev];
-                              [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
-                              return arr;
-                            })}
-                            className="text-slate-300 hover:text-slate-600 disabled:opacity-20 leading-none text-[9px]"
-                          >▼</button>
-                        </div>
-
-                        {/* Sil */}
-                        <button
-                          onClick={() => setCustomSections(prev => prev.filter(s => s.id !== sec.id))}
-                          className="text-slate-300 hover:text-red-400 transition flex-shrink-0 text-[11px] ml-0.5"
-                        >✕</button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Bölüm ekle butonları */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {(["shelf", "drawer", "hanger", "open"] as CustomSection["type"][]).map(type => {
-                      const labels: Record<CustomSection["type"], string> = {
-                        shelf: "+ Raf", drawer: "+ Çekmece", hanger: "+ Askılık", open: "+ Açık"
-                      };
-                      const defaults: Record<CustomSection["type"], number> = {
-                        shelf: 35, drawer: 25, hanger: 120, open: 50
-                      };
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            nextSecId.current += 1;
-                            setCustomSections(prev => [...prev, { id: nextSecId.current, type, heightCm: defaults[type] }]);
-                          }}
-                          className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-primary/40 hover:bg-primary/5 text-[10px] text-slate-500 hover:text-primary transition"
-                        >
-                          {labels[type]}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Odaya ekle */}
-                  <button
-                    onClick={() => { addCabinet("custom"); setShowCustomBuilder(false); }}
-                    disabled={customSections.length === 0}
-                    className="w-full py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition mt-1"
-                  >
-                    Odaya Ekle →
-                  </button>
+          {/* ── Dolap İçi Düzenleyici ── */}
+          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold text-slate-700">Dolap İçi Düzenleyici</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  {selectedCab ? `${VARIANT_LABELS[selectedCab.variant]} seçili` : "Sol panelden bir dolap seç"}
+                </div>
+              </div>
+              {selectedCab && (
+                <div className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">
+                  {Math.round(room.height * selectedCab.heightRatio)} cm
                 </div>
               )}
             </div>
 
-            <p className="text-[11px] text-slate-400 pt-1">
-              Üzerine tıkla → sürükle. Duvara yaklaşınca otomatik yapışır.
-            </p>
+            {/* Eklenti paleti — çizim bloğu mantığında */}
+            <div className="p-3 border-b border-slate-100">
+              <div className="text-[10px] text-slate-400 font-medium mb-2 uppercase tracking-wide">Bölüm ekle</div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {([
+                  { type: "shelf"          as const, label: "Raf",        color: "#E0F2FE", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="7" width="20" height="3" rx="1" fill="#0ea5e9"/><rect x="1" y="1" width="2" height="16" rx="1" fill="#94a3b8"/><rect x="19" y="1" width="2" height="16" rx="1" fill="#94a3b8"/></svg>
+                  )},
+                  { type: "drawer"         as const, label: "Çekmece",   color: "#FEF3C7", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="3" width="20" height="12" rx="2" fill="#fbbf24" opacity=".3"/><rect x="1" y="3" width="20" height="12" rx="2" stroke="#f59e0b" strokeWidth="1"/><rect x="8" y="8.5" width="6" height="1.5" rx="0.75" fill="#f59e0b"/></svg>
+                  )},
+                  { type: "deep-drawer"    as const, label: "Derin",      color: "#FDE8D8", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="1" width="20" height="16" rx="2" fill="#fb923c" opacity=".25"/><rect x="1" y="1" width="20" height="16" rx="2" stroke="#f97316" strokeWidth="1"/><rect x="7" y="8.5" width="8" height="2" rx="1" fill="#f97316"/></svg>
+                  )},
+                  { type: "hanger"         as const, label: "Askılık",   color: "#F0FDF4", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><path d="M11 3 Q11 7 2 12 H20 Q11 7 11 3Z" stroke="#22c55e" strokeWidth="1" fill="none" strokeLinejoin="round"/><circle cx="11" cy="3" r="1.5" stroke="#22c55e" strokeWidth="1" fill="none"/><line x1="2" y1="12" x2="20" y2="12" stroke="#22c55e" strokeWidth="1"/></svg>
+                  )},
+                  { type: "jewelry-drawer" as const, label: "Takı",       color: "#FDF4FF", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="5" width="20" height="8" rx="2" fill="#d946ef" opacity=".2"/><rect x="1" y="5" width="20" height="8" rx="2" stroke="#d946ef" strokeWidth="1"/><circle cx="11" cy="9" r="1.5" fill="#d946ef"/><path d="M7 9h2M13 9h2" stroke="#d946ef" strokeWidth="0.8"/></svg>
+                  )},
+                  { type: "shoe-rack"      as const, label: "Ayakkabı",  color: "#F0F4FF", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><line x1="1" y1="6" x2="21" y2="6" stroke="#6366f1" strokeWidth="1.2"/><line x1="1" y1="12" x2="21" y2="12" stroke="#6366f1" strokeWidth="1.2"/><path d="M4 8 Q7 9 10 6" stroke="#6366f1" strokeWidth="0.8" fill="none" strokeLinecap="round"/><path d="M12 8 Q15 9 18 6" stroke="#6366f1" strokeWidth="0.8" fill="none" strokeLinecap="round"/></svg>
+                  )},
+                  { type: "open"           as const, label: "Açık",       color: "#F8FAFC", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="1" width="20" height="16" rx="2" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 2"/></svg>
+                  )},
+                  { type: "shelf"          as const, label: "+ Modül",    color: "#EFF6FF", icon: (
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="1" width="20" height="16" rx="2" fill="#3b82f6" opacity=".1"/><line x1="11" y1="5" x2="11" y2="13" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/><line x1="7" y1="9" x2="15" y2="9" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  ), isAddModule: true },
+                ] as { type: CustomSection["type"]; label: string; color: string; icon: React.ReactNode; isAddModule?: boolean }[]).map((item, i) => {
+                  const defaults: Record<CustomSection["type"], number> = {
+                    shelf: 35, drawer: 20, "deep-drawer": 35, hanger: 115,
+                    "jewelry-drawer": 12, "shoe-rack": 20, open: 45
+                  };
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        if (!selectedCab) {
+                          // Modül yoksa önce ekle
+                          addCabinet("custom");
+                          return;
+                        }
+                        if (item.isAddModule) { addCabinet("custom"); return; }
+                        const newSec: CustomSection = { id: Date.now(), type: item.type, heightCm: defaults[item.type] };
+                        setCabinets(prev => prev.map(c => c.id === selectedId
+                          ? { ...c, customSections: [...(c.customSections ?? []), newSec] }
+                          : c
+                        ));
+                      }}
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl border transition hover:scale-105 active:scale-95"
+                      style={{ background: item.color, borderColor: item.color === "#F8FAFC" ? "#e2e8f0" : "transparent" }}
+                      title={item.label}
+                    >
+                      {item.icon}
+                      <span className="text-[9px] font-medium text-slate-600 leading-none">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Görsel dolap editörü — seçili dolabın bölümleri */}
+            {selectedCab ? (
+              <div className="p-3">
+                {/* Dolap kesit önizlemesi */}
+                <div className="flex gap-2">
+                  {/* Sol: görsel kesit */}
+                  <div className="flex-shrink-0" style={{ width: 52 }}>
+                    <div className="text-[9px] text-slate-400 mb-1 text-center">Kesit</div>
+                    <div
+                      className="relative rounded border border-slate-200 overflow-hidden"
+                      style={{
+                        width: 52,
+                        height: Math.min(280, Math.max(80, (selectedCab.customSections ?? []).reduce((s, x) => s + x.heightCm, 0) * 0.7 + 20)),
+                        background: "#f8fafc",
+                      }}
+                    >
+                      {/* Dolap gövdesi */}
+                      <div className="absolute inset-0 border-2 border-slate-300 rounded" style={{ margin: 2 }} />
+                      {/* Bölümler */}
+                      {(() => {
+                        const secs = selectedCab.customSections ?? [];
+                        const totalH = secs.reduce((s, x) => s + x.heightCm, 0) || 1;
+                        const cabH = Math.round(room.height * selectedCab.heightRatio);
+                        const scale = Math.min(260, Math.max(60, totalH * 0.7)) / totalH;
+                        const typeColors: Record<string, string> = {
+                          shelf: "#0ea5e9", drawer: "#f59e0b", "deep-drawer": "#f97316",
+                          hanger: "#22c55e", "jewelry-drawer": "#d946ef", "shoe-rack": "#6366f1", open: "#e2e8f0"
+                        };
+                        let cumY = 4;
+                        return secs.map((sec, idx) => {
+                          const h = Math.max(4, sec.heightCm * scale);
+                          const y = cumY; cumY += h;
+                          const col = typeColors[sec.type] ?? "#94a3b8";
+                          return (
+                            <div key={sec.id} className="absolute left-1 right-1 flex items-center justify-center overflow-hidden"
+                              style={{ top: y, height: h - 1, background: col + "22", borderBottom: `1px solid ${col}44`, borderRadius: 2 }}>
+                              {h > 12 && (
+                                <span style={{ fontSize: 7, color: col, fontWeight: 600, lineHeight: 1 }}>
+                                  {sec.heightCm}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                    <div className="text-[9px] text-slate-400 text-center mt-1">
+                      {Math.round(room.height * selectedCab.heightRatio)} cm
+                    </div>
+                  </div>
+
+                  {/* Sağ: bölüm listesi */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-slate-500 font-medium">Bölümler</span>
+                      <span className="text-[9px] text-slate-400">
+                        {(selectedCab.customSections ?? []).reduce((s, x) => s + x.heightCm, 0)} / {Math.round(room.height * selectedCab.heightRatio)} cm
+                      </span>
+                    </div>
+                    {(!selectedCab.customSections || selectedCab.customSections.length === 0) ? (
+                      <div className="text-center py-4 text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                        Yukarıdan bölüm ekle
+                      </div>
+                    ) : (
+                      <div className="space-y-1 max-h-56 overflow-y-auto">
+                        {selectedCab.customSections.map((sec, idx) => {
+                          const typeLabel: Record<string, string> = {
+                            shelf: "Raf", drawer: "Çekmece", "deep-drawer": "Derin çekmece",
+                            hanger: "Askılık", "jewelry-drawer": "Takı çekmecesi",
+                            "shoe-rack": "Ayakkabı rafı", open: "Açık alan"
+                          };
+                          const typeColor: Record<string, string> = {
+                            shelf: "#0ea5e9", drawer: "#f59e0b", "deep-drawer": "#f97316",
+                            hanger: "#22c55e", "jewelry-drawer": "#d946ef", "shoe-rack": "#6366f1", open: "#94a3b8"
+                          };
+                          const col = typeColor[sec.type] ?? "#94a3b8";
+                          return (
+                            <div key={sec.id}
+                              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-slate-100 hover:border-slate-200 bg-white group"
+                            >
+                              {/* Renk bandı */}
+                              <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: col }} />
+                              {/* Tip etiketi */}
+                              <span className="text-[10px] font-medium text-slate-600 flex-1 truncate">
+                                {typeLabel[sec.type] ?? sec.type}
+                              </span>
+                              {/* Yükseklik input */}
+                              <input
+                                type="number" min={8} max={250}
+                                value={sec.heightCm}
+                                onChange={e => {
+                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || 8));
+                                  setCabinets(prev => prev.map(c => c.id === selectedId
+                                    ? { ...c, customSections: (c.customSections ?? []).map(s =>
+                                        s.id === sec.id ? { ...s, heightCm: v } : s
+                                      )}
+                                    : c
+                                  ));
+                                }}
+                                className="w-10 text-[10px] text-center border border-slate-200 rounded px-0.5 py-0.5 font-semibold focus:outline-none focus:border-primary/50"
+                                style={{ color: col }}
+                              />
+                              <span className="text-[9px] text-slate-400 flex-shrink-0">cm</span>
+                              {/* Yukarı/aşağı */}
+                              <div className="flex flex-col opacity-0 group-hover:opacity-100 transition">
+                                <button disabled={idx === 0}
+                                  onClick={() => setCabinets(prev => prev.map(c => {
+                                    if (c.id !== selectedId) return c;
+                                    const arr = [...(c.customSections ?? [])];
+                                    [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
+                                    return { ...c, customSections: arr };
+                                  }))}
+                                  className="text-[8px] text-slate-400 hover:text-slate-700 disabled:opacity-20 leading-none">▲</button>
+                                <button disabled={idx === (selectedCab.customSections?.length ?? 0) - 1}
+                                  onClick={() => setCabinets(prev => prev.map(c => {
+                                    if (c.id !== selectedId) return c;
+                                    const arr = [...(c.customSections ?? [])];
+                                    [arr[idx], arr[idx+1]] = [arr[idx+1], arr[idx]];
+                                    return { ...c, customSections: arr };
+                                  }))}
+                                  className="text-[8px] text-slate-400 hover:text-slate-700 disabled:opacity-20 leading-none">▼</button>
+                              </div>
+                              {/* Sil */}
+                              <button
+                                onClick={() => setCabinets(prev => prev.map(c => c.id === selectedId
+                                  ? { ...c, customSections: (c.customSections ?? []).filter(s => s.id !== sec.id) }
+                                  : c
+                                ))}
+                                className="text-slate-200 hover:text-red-400 transition text-xs opacity-0 group-hover:opacity-100 flex-shrink-0"
+                              >✕</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Toplam uyarısı */}
+                    {(() => {
+                      const total = (selectedCab.customSections ?? []).reduce((s, x) => s + x.heightCm, 0);
+                      const max = Math.round(room.height * selectedCab.heightRatio);
+                      if (total > max) return (
+                        <div className="mt-1.5 text-[9px] text-red-500 bg-red-50 rounded px-2 py-1">
+                          ⚠ Toplam {total} cm — dolap {max} cm ({total - max} cm fazla)
+                        </div>
+                      );
+                      if (total > 0 && total < max) return (
+                        <div className="mt-1.5 text-[9px] text-emerald-600 bg-emerald-50 rounded px-2 py-1">
+                          ✓ {max - total} cm boş alan kaldı
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-5 text-center text-[11px] text-slate-400">
+                <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-2">
+                  <svg width="18" height="18" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                </div>
+                3D sahnede bir dolaba tıkla,<br/>sonra bölüm ekle
+              </div>
+            )}
           </div>
 
           {/* ── Ürün Dene ── */}
