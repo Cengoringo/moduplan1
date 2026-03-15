@@ -948,9 +948,131 @@ const TRY_PRODUCTS: Record<string, TryProduct[]> = {
   ],
 };
 
+// ─── Onboarding Şablonları ────────────────────────────────────────────────────
+
+type TemplateKey = "kitchen" | "wardrobe" | "laundry" | "tv" | "shoe" | "custom";
+
+type OnboardingSection = {
+  id: number;
+  type: "shelf" | "drawer" | "hanger" | "open";
+  heightCm: number;
+};
+
+const TEMPLATE_META: Record<TemplateKey, { name: string; sub: string }> = {
+  kitchen:  { name: "Mutfak",        sub: "Üst raf + çekmece" },
+  wardrobe: { name: "Gardırop",      sub: "Askı + raf + çekmece" },
+  laundry:  { name: "Çamaşır Odası", sub: "Raflı + çekmeceli" },
+  tv:       { name: "TV Ünitesi",    sub: "Alçak + orta raf" },
+  shoe:     { name: "Ayakkabılık",   sub: "Eğik raflı" },
+  custom:   { name: "Boş Başla",     sub: "Sıfırdan tasarla" },
+};
+
+const TEMPLATE_DEFAULT_SECTIONS: Record<TemplateKey, OnboardingSection[]> = {
+  kitchen:  [
+    { id:1, type:"shelf",  heightCm:35 },
+    { id:2, type:"shelf",  heightCm:30 },
+    { id:3, type:"drawer", heightCm:20 },
+    { id:4, type:"drawer", heightCm:20 },
+    { id:5, type:"drawer", heightCm:18 },
+  ],
+  wardrobe: [
+    { id:1, type:"hanger", heightCm:115 },
+    { id:2, type:"shelf",  heightCm:35 },
+    { id:3, type:"shelf",  heightCm:35 },
+    { id:4, type:"drawer", heightCm:20 },
+  ],
+  laundry:  [
+    { id:1, type:"shelf",  heightCm:45 },
+    { id:2, type:"shelf",  heightCm:45 },
+    { id:3, type:"shelf",  heightCm:45 },
+    { id:4, type:"drawer", heightCm:20 },
+    { id:5, type:"open",   heightCm:40 },
+  ],
+  tv:       [
+    { id:1, type:"open",   heightCm:45 },
+    { id:2, type:"shelf",  heightCm:22 },
+    { id:3, type:"drawer", heightCm:18 },
+    { id:4, type:"shelf",  heightCm:22 },
+  ],
+  shoe:     [
+    { id:1, type:"shelf",  heightCm:18 },
+    { id:2, type:"shelf",  heightCm:18 },
+    { id:3, type:"shelf",  heightCm:18 },
+    { id:4, type:"shelf",  heightCm:18 },
+    { id:5, type:"shelf",  heightCm:18 },
+  ],
+  custom: [],
+};
+
+/** Şablona + oda ölçülerine göre başlangıç Cabinet[] üretir */
+function buildTemplateLayout(
+  key: TemplateKey,
+  room: RoomSize,
+  sections: OnboardingSection[]
+): Cabinet[] {
+  const hr = Math.min(0.98, ((room.height - 5) / room.height));
+  const wf = Math.min(0.60, (room.width * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+  const df = Math.min(0.40, (room.depth * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+
+  const customSects: CustomSection[] = sections.map(s => ({
+    id: s.id, type: s.type, heightCm: s.heightCm
+  }));
+
+  const baseVariant: CabinetVariant =
+    key === "wardrobe" ? "wardrobe" :
+    key === "kitchen"  ? "drawerWardrobe" :
+    key === "custom"   ? "custom" :
+    "multiShelf";
+
+  // Odaya sığan yatay dolap sayısı (max 4)
+  const cabWidthCm = Math.max(40, Math.min(120, room.width / 3));
+  const count = Math.min(4, Math.max(1, Math.floor(room.width / cabWidthCm)));
+  const spacingM = (room.width * CM_TO_M) / count;
+
+  return Array.from({ length: count }, (_, i) => {
+    const xPos = -((room.width * CM_TO_M) / 2) + spacingM * (i + 0.5);
+    const cab = createCabinet(i + 1, baseVariant, customSects.length > 0 ? customSects : undefined);
+    return {
+      ...cab,
+      id: i + 1,
+      x: xPos,
+      z: 0,
+      heightRatio: hr,
+      widthFactor: wf / count,
+      depthFactor: df,
+      shelfHeightsCm: key === "multiShelf" || key === "laundry" || key === "shoe"
+        ? sections.filter(s => s.type === "shelf").map(s => s.heightCm)
+        : undefined,
+    };
+  });
+}
+
 // ─── Ana Sayfa ────────────────────────────────────────────────────────────────
 
 function ModuPlanApp() {
+  // ── Onboarding ────────────────────────────────────────────────────────────
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [obStep, setObStep] = useState<0|1|2|3|4>(0);
+  const [obRoom, setObRoom] = useState<RoomSize>({ width: 320, depth: 280, height: 240 });
+  const [obTemplate, setObTemplate] = useState<TemplateKey | null>(null);
+  const [obSections, setObSections] = useState<OnboardingSection[]>([]);
+  const [obMeasureMode, setObMeasureMode] = useState<"manual"|"camera">("manual");
+  const obVideoRef = useRef<HTMLVideoElement | null>(null);
+  const obStreamRef = useRef<MediaStream | null>(null);
+  const [obCamActive, setObCamActive] = useState(false);
+  const [obDragIdx, setObDragIdx] = useState<number | null>(null);
+  // Oda planı — kuş bakışı eşya yerleştirme
+  type RoomFurniture = {
+    id: number; type: string; rx: number; ry: number; w: number; h: number;
+  };
+  const [obFurniture, setObFurniture] = useState<RoomFurniture[]>([]);
+  const [obSelFurn, setObSelFurn] = useState<string | null>(null);
+  const obCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const obDragFurnRef = useRef<{ item: RoomFurniture; offX: number; offY: number } | null>(null);
+  const obResizeRef = useRef<{ item: RoomFurniture; handle: string; sx: number; sy: number; ow: number; oh: number; orx: number; ory: number } | null>(null);
+  const [obHoverFurnId, setObHoverFurnId] = useState<number | null>(null);
+  const [obScanActive, setObScanActive] = useState(false);
+
   const [room, setRoom]         = useState<RoomSize>({ width: 400, depth: 400, height: 260 });
   const [cabinets, setCabinets] = useState<Cabinet[]>([{ ...createCabinet(1, "drawerWardrobe"), x: -1 }]);
   const [selectedId, setSelectedId] = useState<number | null>(1);
@@ -1236,6 +1358,266 @@ function ModuPlanApp() {
     }));
   };
 
+  // ── Onboarding handlers ──────────────────────────────────────────────────
+
+  const obStartCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      obStreamRef.current = stream;
+      if (obVideoRef.current) obVideoRef.current.srcObject = stream;
+      setObCamActive(true);
+      setObMeasureMode("camera");
+    } catch {
+      alert("Kamera erişimi sağlanamadı. Manuel giriş kullanın.");
+    }
+  };
+
+  const obStopCamera = () => {
+    obStreamRef.current?.getTracks().forEach(t => t.stop());
+    obStreamRef.current = null;
+    setObCamActive(false);
+  };
+
+  const obPickTemplate = (key: TemplateKey) => {
+    setObTemplate(key);
+    setObSections(TEMPLATE_DEFAULT_SECTIONS[key].map((s, i) => ({ ...s, id: i + 1 })));
+  };
+
+  const obAddSection = (type: OnboardingSection["type"]) => {
+    const defaults = { shelf: 35, drawer: 20, hanger: 115, open: 40 };
+    setObSections(prev => [...prev, { id: Date.now(), type, heightCm: defaults[type] }]);
+  };
+
+  const obDeleteSection = (id: number) => {
+    setObSections(prev => prev.filter(s => s.id !== id));
+  };
+
+  const obDragStart = (idx: number) => setObDragIdx(idx);
+
+  const obDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (obDragIdx === null || obDragIdx === idx) return;
+    setObSections(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(obDragIdx, 1);
+      next.splice(idx, 0, moved);
+      setObDragIdx(idx);
+      return next;
+    });
+  };
+
+  const obFinish = () => {
+    obStopCamera();
+    const newRoom = obRoom;
+    const layout = buildTemplateLayout(obTemplate ?? "custom", newRoom, obSections);
+    setRoom(newRoom);
+    setCabinets(layout);
+    setSelectedId(layout[0]?.id ?? null);
+    setShowOnboarding(false);
+  };
+
+  // ── Oda Planı Canvas ─────────────────────────────────────────────────────
+  const OB_FURN_DEFS: Record<string, { w: number; h: number; color: string; border: string; label: string; fixed: boolean }> = {
+    sofa:      { w:200, h:85,  color:"#FAC775", border:"#BA7517", label:"Koltuk",      fixed:false },
+    bed:       { w:140, h:200, color:"#FAC775", border:"#BA7517", label:"Yatak",       fixed:false },
+    table:     { w:120, h:80,  color:"#FAC775", border:"#BA7517", label:"Masa",        fixed:false },
+    piano:     { w:150, h:55,  color:"#FAC775", border:"#BA7517", label:"Piyano",      fixed:false },
+    "cab-mark":{ w:200, h:60,  color:"#B5D4F4", border:"#185FA5", label:"Dolap Alanı", fixed:false },
+    fridge:    { w:60,  h:65,  color:"#D3D1C7", border:"#888780", label:"Buzdolabı",   fixed:true },
+    washer:    { w:60,  h:58,  color:"#D3D1C7", border:"#888780", label:"Çamaşır",     fixed:true },
+    dryer:     { w:60,  h:60,  color:"#D3D1C7", border:"#888780", label:"Kurutucu",    fixed:true },
+    dishwasher:{ w:60,  h:60,  color:"#D3D1C7", border:"#888780", label:"Bulaşık",     fixed:true },
+    oven:      { w:60,  h:60,  color:"#D3D1C7", border:"#888780", label:"Fırın/Ocak",  fixed:true },
+  };
+  const HS = 8; // handle size
+
+  const obDrawCanvas = React.useCallback(() => {
+    const canvas = obCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const cw = canvas.width, ch = canvas.height;
+    const RW = obRoom.width, RD = obRoom.depth;
+    const padX = 16, padY = 12;
+    const sc = (cw - padX * 2) / RW;
+    ctx.clearRect(0, 0, cw, ch);
+    // Room bg
+    ctx.fillStyle = "#EAF3DE"; ctx.strokeStyle = "#639922"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(padX, padY, RW * sc, RD * sc, 3); ctx.fill(); ctx.stroke();
+    // Grid
+    ctx.strokeStyle = "rgba(99,153,34,0.1)"; ctx.lineWidth = 0.5;
+    for (let x = 50; x < RW; x += 50) { const cx = padX + x * sc; ctx.beginPath(); ctx.moveTo(cx, padY); ctx.lineTo(cx, padY + RD * sc); ctx.stroke(); }
+    for (let y = 50; y < RD; y += 50) { const cy = padY + y * sc; ctx.beginPath(); ctx.moveTo(padX, cy); ctx.lineTo(padX + RW * sc, cy); ctx.stroke(); }
+    ctx.fillStyle = "#3B6D11"; ctx.font = "10px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(`${RW}×${RD} cm`, padX + 4, padY + 4);
+    // Furniture
+    obFurniture.forEach(item => {
+      const def = OB_FURN_DEFS[item.type];
+      if (!def) return;
+      const x = padX + item.rx * sc, y = padY + item.ry * sc;
+      const w = item.w * sc, h = item.h * sc;
+      const isHov = item.id === obHoverFurnId;
+      ctx.fillStyle = "rgba(0,0,0,0.06)";
+      ctx.beginPath(); ctx.roundRect(x + 2, y + 2, w, h, 3); ctx.fill();
+      ctx.fillStyle = def.color; ctx.strokeStyle = def.border; ctx.lineWidth = isHov ? 2 : 0.8;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#444441"; ctx.font = "500 10px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(def.label, x + w / 2, y + h / 2 - 5);
+      ctx.fillStyle = "#888780"; ctx.font = "9px system-ui";
+      ctx.fillText(`${Math.round(item.w)}×${Math.round(item.h)} cm`, x + w / 2, y + h / 2 + 6);
+      if (isHov && !def.fixed) {
+        // Resize handles
+        const handles = [
+          { id:"tl", cx:x,     cy:y      }, { id:"tr", cx:x+w,   cy:y     },
+          { id:"br", cx:x+w,   cy:y+h    }, { id:"bl", cx:x,     cy:y+h   },
+          { id:"tm", cx:x+w/2, cy:y      }, { id:"bm", cx:x+w/2, cy:y+h   },
+          { id:"ml", cx:x,     cy:y+h/2  }, { id:"mr", cx:x+w,   cy:y+h/2 },
+        ];
+        handles.forEach(hnd => {
+          ctx.fillStyle = "white"; ctx.strokeStyle = "#BA7517"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.roundRect(hnd.cx - HS/2, hnd.cy - HS/2, HS, HS, 2); ctx.fill(); ctx.stroke();
+        });
+        ctx.fillStyle = "rgba(186,117,23,0.9)";
+        const badge = "↔ boyutu değiştir";
+        ctx.font = "9px system-ui"; const bw = ctx.measureText(badge).width + 10;
+        ctx.beginPath(); ctx.roundRect(x + w/2 - bw/2, y - 18, bw, 14, 4); ctx.fill();
+        ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(badge, x + w/2, y - 11);
+      }
+      if (isHov && def.fixed) {
+        ctx.fillStyle = "rgba(95,94,90,0.85)";
+        const badge = "Standart ölçü";
+        ctx.font = "9px system-ui"; const bw = ctx.measureText(badge).width + 10;
+        ctx.beginPath(); ctx.roundRect(x + w/2 - bw/2, y - 18, bw, 14, 4); ctx.fill();
+        ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(badge, x + w/2, y - 11);
+      }
+    });
+    // Ghost if placing
+    if (obSelFurn) {
+      const def = OB_FURN_DEFS[obSelFurn];
+      if (def) {
+        ctx.fillStyle = "rgba(55,138,221,0.15)"; ctx.strokeStyle = "#185FA5"; ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.roundRect(padX + 8, padY + 8, def.w * sc, def.h * sc, 3); ctx.fill(); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#185FA5"; ctx.font = "500 10px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+        ctx.fillText("Tıkla → yerleştir", padX + 12, padY + 12);
+      }
+    }
+  }, [obFurniture, obSelFurn, obHoverFurnId, obRoom]);
+
+  useEffect(() => { obDrawCanvas(); }, [obDrawCanvas]);
+
+  const obGetCanvasPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = obCanvasRef.current; if (!canvas) return { cx: 0, cy: 0, sc: 1, padX: 16, padY: 12 };
+    const rect = canvas.getBoundingClientRect();
+    const cl = "touches" in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const ct = "touches" in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+    const sc = (canvas.width - 32) / obRoom.width;
+    return { cx: cl - rect.left, cy: ct - rect.top, sc, padX: 16, padY: 12 };
+  };
+
+  const obHitHandle = (item: { rx: number; ry: number; w: number; h: number }, cx: number, cy: number, sc: number, padX: number, padY: number) => {
+    const x = padX + item.rx * sc, y = padY + item.ry * sc, w = item.w * sc, h = item.h * sc;
+    const handles = [
+      { id:"tl", cx:x, cy:y }, { id:"tr", cx:x+w, cy:y }, { id:"br", cx:x+w, cy:y+h }, { id:"bl", cx:x, cy:y+h },
+      { id:"tm", cx:x+w/2, cy:y }, { id:"bm", cx:x+w/2, cy:y+h }, { id:"ml", cx:x, cy:y+h/2 }, { id:"mr", cx:x+w, cy:y+h/2 },
+    ];
+    return handles.find(h => Math.abs(cx - h.cx) <= HS + 2 && Math.abs(cy - h.cy) <= HS + 2) ?? null;
+  };
+
+  const obHitItem = (cx: number, cy: number, sc: number, padX: number, padY: number) => {
+    for (let i = obFurniture.length - 1; i >= 0; i--) {
+      const it = obFurniture[i];
+      const x = padX + it.rx * sc, y = padY + it.ry * sc;
+      if (cx >= x && cx <= x + it.w * sc && cy >= y && cy <= y + it.h * sc) return it;
+    }
+    return null;
+  };
+
+  const obCanvasPointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const { cx, cy, sc, padX, padY } = obGetCanvasPos(e);
+    const RW = obRoom.width, RD = obRoom.depth;
+    if (obSelFurn) {
+      const def = OB_FURN_DEFS[obSelFurn]; if (!def) return;
+      let rx = (cx - padX) / sc - def.w / 2, ry = (cy - padY) / sc - def.h / 2;
+      rx = Math.max(0, Math.min(RW - def.w, rx)); ry = Math.max(0, Math.min(RD - def.h, ry));
+      const newItem = { id: Date.now(), type: obSelFurn, rx, ry, w: def.w, h: def.h };
+      setObFurniture(prev => [...prev, newItem]);
+      setObSelFurn(null); return;
+    }
+    const hit = obHitItem(cx, cy, sc, padX, padY);
+    if (hit) {
+      const def = OB_FURN_DEFS[hit.type];
+      if (def && !def.fixed) {
+        const hnd = obHitHandle(hit, cx, cy, sc, padX, padY);
+        if (hnd) {
+          obResizeRef.current = { item: hit, handle: hnd.id, sx: cx, sy: cy, ow: hit.w, oh: hit.h, orx: hit.rx, ory: hit.ry };
+          return;
+        }
+      }
+      obDragFurnRef.current = { item: hit, offX: cx - (padX + hit.rx * sc), offY: cy - (padY + hit.ry * sc) };
+      // bring to front
+      setObFurniture(prev => { const next = prev.filter(f => f.id !== hit.id); return [...next, hit]; });
+    }
+  };
+
+  const obCanvasPointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { cx, cy, sc, padX, padY } = obGetCanvasPos(e);
+    const RW = obRoom.width, RD = obRoom.depth;
+    if (obResizeRef.current) {
+      const { item, handle, sx, sy, ow, oh, orx, ory } = obResizeRef.current;
+      const dx = (cx - sx) / sc, dy = (cy - sy) / sc;
+      let nw = ow, nh = oh, nx = orx, ny = ory;
+      if (handle.includes("r") || handle === "mr") nw = Math.max(30, ow + dx);
+      if (handle.includes("l") || handle === "ml") { nw = Math.max(30, ow - dx); nx = orx + ow - nw; }
+      if (handle.includes("b") || handle === "bm") nh = Math.max(30, oh + dy);
+      if (handle.includes("t") || handle === "tm") { nh = Math.max(30, oh - dy); ny = ory + oh - nh; }
+      setObFurniture(prev => prev.map(f => f.id === item.id
+        ? { ...f, rx: Math.max(0, Math.min(RW - nw, nx)), ry: Math.max(0, Math.min(RD - nh, ny)), w: nw, h: nh }
+        : f));
+      return;
+    }
+    if (obDragFurnRef.current) {
+      const { item, offX, offY } = obDragFurnRef.current;
+      const def = OB_FURN_DEFS[item.type];
+      if (!def) return;
+      const rx = Math.max(0, Math.min(RW - item.w, (cx - offX - padX) / sc));
+      const ry = Math.max(0, Math.min(RD - item.h, (cy - offY - padY) / sc));
+      setObFurniture(prev => prev.map(f => f.id === item.id ? { ...f, rx, ry } : f));
+      return;
+    }
+    const hit = obHitItem(cx, cy, sc, padX, padY);
+    setObHoverFurnId(hit ? hit.id : null);
+  };
+
+  const obCanvasPointerUp = () => {
+    obDragFurnRef.current = null;
+    obResizeRef.current = null;
+  };
+
+  const obSimulateScan = () => {
+    setObScanActive(true);
+    setTimeout(() => {
+      const RW = obRoom.width, RD = obRoom.depth;
+      setObFurniture([
+        { id: 1, type: "sofa",     rx: 20,       ry: 20,       w: 180, h: 80 },
+        { id: 2, type: "table",    rx: 80,        ry: 180,      w: 100, h: 70 },
+        { id: 3, type: "cab-mark", rx: 10,        ry: RD - 70,  w: Math.min(200, RW - 20), h: 60 },
+      ]);
+      setObScanActive(false);
+      setObMeasureMode("manual");
+    }, 1800);
+  };
+
+  const obFurnStats = () => {
+    const total = (obRoom.width * obRoom.depth) / 10000;
+    const used = obFurniture.reduce((s, f) => s + (f.w * f.h) / 10000, 0);
+    return { total: total.toFixed(2), used: used.toFixed(2), free: Math.max(0, total - used).toFixed(2) };
+  };
+
   const handleRoomChange = (field: keyof RoomSize, value: string) => {
     const num = parseInt(value || "0", 10);
     if (!Number.isNaN(num)) setRoom(prev => ({ ...prev, [field]: num }));
@@ -1262,10 +1644,272 @@ function ModuPlanApp() {
   const totalCost   = cabinets.reduce((sum, c) => sum + cabinetCost(c, room.height), 0);
   const selectedCab = cabinets.find(c => c.id === selectedId) ?? null;
 
+  // ── Onboarding UI bileşenleri ────────────────────────────────────────────
+  const OB_STEP_LABELS = ["Ölçüm", "Oda Planı", "Şablon", "İç Düzen", "Hazır"];
+  const OB_TYPE_ICONS: Record<string, string> = { shelf:"Raf", drawer:"Çekmece", hanger:"Askılık", open:"Açık" };
+
+  const obRenderOnboarding = () => {
+    const stats = obFurnStats();
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-hidden flex flex-col">
+
+          {/* Header */}
+          <div className="px-6 pt-5 pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <span className="text-primary font-bold text-xs">M</span>
+                </div>
+                <span className="font-semibold text-slate-800 text-sm">ModuPlan</span>
+              </div>
+              <span className="text-xs text-slate-400">{obStep + 1} / {OB_STEP_LABELS.length}</span>
+            </div>
+            <div className="flex gap-1.5">
+              {OB_STEP_LABELS.map((_, i) => (
+                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === obStep ? "flex-[2] bg-primary" : i < obStep ? "flex-1 bg-primary/40" : "flex-1 bg-slate-200"}`} />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+            {/* Step 0: Ölçüm */}
+            {obStep === 0 && (
+              <>
+                <div>
+                  <div className="text-base font-semibold text-slate-800 mb-1">Alanı ölçelim</div>
+                  <div className="text-xs text-slate-500 leading-relaxed">Mobilya otomatik olarak girdiğiniz yüksekliğe tam sığacak şekilde yerleşir. Sonrasında 3D editörde kenarlardan tutarak değiştirebilirsiniz.</div>
+                </div>
+                <button onClick={() => { setObMeasureMode("camera"); obStartCamera(); }}
+                  className={`w-full border rounded-xl py-4 flex flex-col items-center gap-1.5 transition ${obMeasureMode === "camera" ? "border-primary bg-primary/5" : "border-slate-200 hover:border-primary/50"}`}>
+                  <svg width="20" height="20" fill="none" stroke={obMeasureMode === "camera" ? "#2563EB" : "#94a3b8"} strokeWidth="1.6" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  <span className="text-sm font-medium text-slate-700">Kamera ile ölç</span>
+                  <span className="text-xs text-slate-400">Telefonu duvara doğrult</span>
+                </button>
+                <div className="flex items-center gap-3"><div className="flex-1 h-px bg-slate-100"/><span className="text-xs text-slate-400">veya manuel gir</span><div className="flex-1 h-px bg-slate-100"/></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500 block mb-1">Genişlik (cm)</label>
+                    <input type="number" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" placeholder="320"
+                      value={obRoom.width || ""} onChange={e => setObRoom(prev => ({ ...prev, width: parseInt(e.target.value) || 320 }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 block mb-1">Derinlik (cm)</label>
+                    <input type="number" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" placeholder="280"
+                      value={obRoom.depth || ""} onChange={e => setObRoom(prev => ({ ...prev, depth: parseInt(e.target.value) || 280 }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">
+                    Tavan yüksekliği (cm)
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">mobilya buna göre boyutlanır</span>
+                  </label>
+                  <input type="number" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary" placeholder="240"
+                    value={obRoom.height || ""} onChange={e => setObRoom(prev => ({ ...prev, height: parseInt(e.target.value) || 240 }))} />
+                  {obRoom.height > 0 && (
+                    <p className="mt-1.5 text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
+                      Mobilya {obRoom.height} cm yüksekliğe otomatik yerleşir.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Step 1: Oda Planı */}
+            {obStep === 1 && (
+              <>
+                <div>
+                  <div className="text-base font-semibold text-slate-800 mb-1">Oda planını oluştur</div>
+                  <div className="text-xs text-slate-500 leading-relaxed">Mevcut eşyaları yerleştir — boş alanı gör, dolap için köşe belirle.</div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[["Toplam", stats.total + " m²", ""], ["Dolu", stats.used + " m²", ""], ["Boş", stats.free + " m²", "text-emerald-600"]].map(([l, v, cls]) => (
+                    <div key={l as string} className="bg-slate-50 rounded-lg px-2 py-2">
+                      <div className="text-[10px] text-slate-400">{l}</div>
+                      <div className={`text-sm font-medium text-slate-700 ${cls}`}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex border border-slate-200 rounded-xl overflow-hidden">
+                  <button onClick={() => { setObMeasureMode("camera"); obSimulateScan(); }}
+                    className={`flex-1 py-2 text-xs font-medium transition ${obMeasureMode === "camera" ? "bg-primary text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+                    Kamera ile tara
+                  </button>
+                  <button onClick={() => setObMeasureMode("manual")}
+                    className={`flex-1 py-2 text-xs font-medium transition ${obMeasureMode === "manual" ? "bg-primary text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+                    Manuel yerleştir
+                  </button>
+                </div>
+                <div>
+                  <div className="text-[11px] text-amber-700 font-medium mb-2">Mobilya — köşeden boyutu değiştirilebilir:</div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {["sofa","bed","table","piano","cab-mark"].map(type => (
+                      <button key={type} onClick={() => setObSelFurn(obSelFurn === type ? null : type)}
+                        className={`text-xs px-2.5 py-1.5 rounded-lg border transition ${obSelFurn === type ? "border-amber-400 bg-amber-50 text-amber-800" : type === "cab-mark" ? "border-blue-300 bg-blue-50 text-blue-700 hover:border-blue-400" : "border-amber-200 bg-amber-50/50 text-amber-700 hover:border-amber-300"}`}>
+                        {OB_FURN_DEFS[type].label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium mb-2">Beyaz eşya — standart ölçü, sabit:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["fridge","washer","dryer","dishwasher","oven"].map(type => (
+                      <button key={type} onClick={() => setObSelFurn(obSelFurn === type ? null : type)}
+                        className={`text-xs px-2.5 py-1.5 rounded-lg border transition ${obSelFurn === type ? "border-slate-500 bg-slate-100 text-slate-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                        {OB_FURN_DEFS[type].label}
+                        <span className="ml-1 text-[9px] text-slate-400">{OB_FURN_DEFS[type].w}×{OB_FURN_DEFS[type].h}</span>
+                      </button>
+                    ))}
+                    <button onClick={() => setObFurniture([])} className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-500 hover:border-red-300 transition">Temizle</button>
+                  </div>
+                </div>
+                {obSelFurn && <div className="text-[11px] text-primary bg-primary/5 rounded-lg px-3 py-2">"{OB_FURN_DEFS[obSelFurn]?.label}" seçildi — plana tıkla{!OB_FURN_DEFS[obSelFurn]?.fixed ? " · Köşeden boyutunu ayarla" : ""}</div>}
+                <div className="relative rounded-xl overflow-hidden border border-slate-200">
+                  <canvas ref={obCanvasRef} height={220}
+                    style={{ display:"block", width:"100%", cursor: obSelFurn ? "crosshair" : obHoverFurnId ? "grab" : "default" }}
+                    onMouseDown={obCanvasPointerDown} onMouseMove={obCanvasPointerMove}
+                    onMouseUp={obCanvasPointerUp} onMouseLeave={obCanvasPointerUp} />
+                  {obScanActive && (
+                    <div className="absolute inset-0 bg-black/85 rounded-xl flex flex-col items-center justify-center gap-3">
+                      <div className="text-sm font-medium text-white">Oda taranıyor...</div>
+                      <div className="w-24 h-24 border-2 border-blue-400 rounded relative overflow-hidden">
+                        <div className="absolute inset-0 border-[3px] border-transparent before:absolute before:w-4 before:h-4 before:top-0 before:left-0 before:border-t-2 before:border-l-2 before:border-blue-400" />
+                        <div className="absolute w-full h-0.5 bg-blue-400/70 top-1/2 animate-bounce" />
+                      </div>
+                      <div className="text-xs text-white/60">Kamerayı köşelere doğrult</div>
+                    </div>
+                  )}
+                  <div style={{ height:0 }} ref={el => {
+                    if (el && obCanvasRef.current) {
+                      const p = obCanvasRef.current.parentElement;
+                      if (p) { const w = p.clientWidth; if (obCanvasRef.current.width !== w) { obCanvasRef.current.width = w; obDrawCanvas(); } }
+                    }
+                  }} />
+                </div>
+                <p className="text-[10px] text-slate-400 text-center">Eşyayı sürükle · <span className="text-amber-600">Turuncu köşe = boyut değiştir</span></p>
+              </>
+            )}
+
+            {/* Step 2: Şablon */}
+            {obStep === 2 && (
+              <>
+                <div>
+                  <div className="text-base font-semibold text-slate-800 mb-1">Şablon seç</div>
+                  <div className="text-xs text-slate-500">Başlangıç noktası — her şey değiştirilebilir.</div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(TEMPLATE_META) as TemplateKey[]).map(key => (
+                    <button key={key} onClick={() => obPickTemplate(key)}
+                      className={`rounded-xl border p-3 flex flex-col items-center gap-1.5 transition ${obTemplate === key ? "border-primary bg-primary/5 border-2" : "border-slate-200 hover:border-primary/40"}`}>
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                          <rect x="2" y="2" width="24" height="24" rx="2" stroke="#94a3b8" strokeWidth="0.8"/>
+                          {key==="kitchen"&&<><rect x="2" y="2" width="24" height="8" rx="2" fill="#d1d5db"/><line x1="2" y1="17" x2="26" y2="17" stroke="#94a3b8" strokeWidth="0.8"/><circle cx="14" cy="21" r="1.2" fill="#94a3b8"/></>}
+                          {key==="wardrobe"&&<><line x1="14" y1="2" x2="14" y2="26" stroke="#94a3b8" strokeWidth="0.8"/><line x1="4" y1="12" x2="12" y2="12" stroke="#94a3b8" strokeWidth="0.8"/><line x1="16" y1="12" x2="24" y2="12" stroke="#94a3b8" strokeWidth="0.8"/><line x1="6" y1="5" x2="6" y2="11" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/></>}
+                          {key==="laundry"&&<><line x1="2" y1="9" x2="26" y2="9" stroke="#94a3b8" strokeWidth="1.2"/><line x1="2" y1="16" x2="26" y2="16" stroke="#94a3b8" strokeWidth="1.2"/><line x1="2" y1="23" x2="26" y2="23" stroke="#94a3b8" strokeWidth="1.2"/></>}
+                          {key==="tv"&&<><rect x="2" y="15" width="24" height="11" rx="2" fill="#d1d5db" stroke="#94a3b8" strokeWidth="0.5"/><rect x="4" y="4" width="20" height="9" rx="1" fill="#e2e8f0"/></>}
+                          {key==="shoe"&&<><line x1="2" y1="7" x2="26" y2="7" stroke="#94a3b8" strokeWidth="1"/><line x1="2" y1="13" x2="26" y2="13" stroke="#94a3b8" strokeWidth="1"/><line x1="2" y1="19" x2="26" y2="19" stroke="#94a3b8" strokeWidth="1"/><path d="M4 9 Q8 10 12 7" stroke="#94a3b8" strokeWidth="0.8" fill="none" strokeLinecap="round"/></>}
+                          {key==="custom"&&<><line x1="9" y1="14" x2="19" y2="14" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round"/><line x1="14" y1="9" x2="14" y2="19" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round"/></>}
+                        </svg>
+                      </div>
+                      <div className="text-xs font-medium text-slate-700">{TEMPLATE_META[key].name}</div>
+                      <div className="text-[9px] text-slate-400">{TEMPLATE_META[key].sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Step 3: İç Düzen */}
+            {obStep === 3 && (
+              <>
+                <div>
+                  <div className="text-base font-semibold text-slate-800 mb-1">İç düzeni ayarla</div>
+                  <div className="text-xs text-slate-500 leading-relaxed">Sürükle-bırak ile sırala, ekle veya sil.</div>
+                </div>
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-[11px] text-blue-700 flex items-start gap-2">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="flex-shrink-0 mt-0.5"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+                  <span>3D editörde <strong className="font-medium">sağ kenar</strong> → genişlik, <strong className="font-medium">üst kenar</strong> → yükseklik sürüklenir.</span>
+                </div>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex justify-between">
+                    <span className="text-xs font-medium text-slate-600">Bölümler</span>
+                    <span className="text-[10px] text-slate-400">{obSections.reduce((s, x) => s + x.heightCm, 0)} cm toplam</span>
+                  </div>
+                  {obSections.length === 0 && <div className="px-3 py-4 text-center text-xs text-slate-400">Bölüm yok — aşağıdan ekle</div>}
+                  {obSections.map((sec, idx) => (
+                    <div key={sec.id} draggable onDragStart={() => obDragStart(idx)} onDragOver={e => obDragOver(e, idx)}
+                      className="flex items-center gap-2 px-3 py-2.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-grab">
+                      <span className="text-slate-300">⠿</span>
+                      <span className="flex-1 text-xs text-slate-700">{OB_TYPE_ICONS[sec.type]}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{sec.heightCm} cm yükseklik</span>
+                      <button onClick={() => obDeleteSection(sec.id)} className="text-red-300 hover:text-red-500 text-sm">×</button>
+                    </div>
+                  ))}
+                  <div className="flex gap-1.5 p-2.5 flex-wrap">
+                    <span className="text-[10px] text-slate-400 self-center">Ekle:</span>
+                    {(["shelf","drawer","hanger","open"] as const).map(t => (
+                      <button key={t} onClick={() => obAddSection(t)}
+                        className="text-[11px] px-2 py-1 rounded-full border border-slate-200 text-slate-600 hover:border-primary hover:text-primary hover:bg-primary/5 transition">
+                        {OB_TYPE_ICONS[t]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Step 4: Hazır */}
+            {obStep === 4 && (
+              <div className="text-center pt-4">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-3">
+                  <svg width="20" height="20" fill="none" stroke="#16a34a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div className="text-base font-semibold text-slate-800 mb-1">Tasarıma hazır</div>
+                <div className="text-xs text-slate-500 mb-5">3D editörde her şeyi değiştirebilirsiniz</div>
+                <div className="grid grid-cols-2 gap-2 text-left">
+                  {[
+                    ["Alan ölçüsü", `${obRoom.width}×${obRoom.depth}×${obRoom.height} cm`],
+                    ["Şablon", obTemplate ? TEMPLATE_META[obTemplate].name : "—"],
+                    ["Bölüm sayısı", `${obSections.length} bölüm`],
+                    ["Eşya", `${obFurniture.length} adet`],
+                  ].map(([l, v]) => (
+                    <div key={l as string} className="bg-slate-50 rounded-lg px-3 py-2.5">
+                      <div className="text-[10px] text-slate-400 mb-0.5">{l}</div>
+                      <div className="text-sm font-medium text-slate-700">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 pb-6 pt-3 border-t border-slate-100 flex gap-2">
+            {obStep > 0 && (
+              <button onClick={() => setObStep(prev => Math.max(0, prev - 1) as 0|1|2|3|4)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+                ← Geri
+              </button>
+            )}
+            <button
+              disabled={obStep === 2 && !obTemplate}
+              onClick={() => { if (obStep < 4) setObStep(prev => (prev + 1) as 0|1|2|3|4); else obFinish(); }}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition">
+              {obStep === 4 ? "3D Editörü Aç →" : obStep === 1 ? "Şablon Seçimine Geç →" : "Devam →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen flex flex-col bg-appbg">
+      {showOnboarding && obRenderOnboarding()}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-8 py-4 border-b border-slate-200 bg-white/80 backdrop-blur">
