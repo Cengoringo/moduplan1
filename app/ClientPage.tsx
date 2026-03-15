@@ -17,6 +17,8 @@ type RoomSize = {
 
 type CabinetVariant = "drawerWardrobe" | "multiShelf" | "wardrobe" | "custom";
 
+type DoorStyle = "classic" | "flat" | "shaker"; // klasik göbekli | düz | çerçeveli
+
 type MaterialType = "mdflam" | "lake" | "akrilik";
 
 type CustomSection = {
@@ -39,6 +41,7 @@ type Cabinet = {
   shelfSpacingCm: number;
   customSections?: CustomSection[];
   hasDoor: boolean;
+  doorStyle?: DoorStyle;
   lockedTo: number | null;
   shelfHeightsCm?: number[]; // multiShelf: bölüm yükseklikleri (üstten alta)
 }
@@ -632,6 +635,70 @@ function CabinetMesh({
         return <ClassicDoor x={0} w={doorW} handleSide="right" />;
       })()}
 
+      {/* ── Düz (Flat) Kapak ── */}
+      {cab.hasDoor && cab.doorStyle === "flat" && (() => {
+        const doorW   = W - T * 2;
+        const doorH   = H - T * 2;
+        const doorT   = T * 1.6;
+        const isDouble = widthCm > 45;
+        const gap      = 0.005;
+        const FlatDoor = ({ x, w, handleSide }: { x: number; w: number; handleSide: "left" | "right" }) => (
+          <group position={[x, 0, D / 2 + doorT / 2]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[w, doorH, doorT]} />
+              <meshStandardMaterial color={color} metalness={mat.metalness + 0.05} roughness={mat.roughness - 0.08} {...MAT_OFFSET} />
+            </mesh>
+            {/* Yatay ince tutamaç */}
+            <mesh position={[handleSide === "right" ? w * 0.28 : -w * 0.28, 0, doorT / 2 + 0.008]}>
+              <boxGeometry args={[0.06, 0.008, 0.008]} />
+              <meshStandardMaterial color="#9CA3AF" metalness={0.9} roughness={0.1} {...MAT_OFFSET} />
+            </mesh>
+          </group>
+        );
+        if (isDouble) {
+          const halfW = (doorW - gap) / 2;
+          return <><FlatDoor x={-(halfW / 2 + gap / 2)} w={halfW} handleSide="right" /><FlatDoor x={(halfW / 2 + gap / 2)} w={halfW} handleSide="left" /></>;
+        }
+        return <FlatDoor x={0} w={doorW} handleSide="right" />;
+      })()}
+
+      {/* ── Shaker (Çerçeveli) Kapak ── */}
+      {cab.hasDoor && cab.doorStyle === "shaker" && (() => {
+        const doorW   = W - T * 2;
+        const doorH   = H - T * 2;
+        const doorT   = T * 1.8;
+        const isDouble = widthCm > 45;
+        const gap      = 0.005;
+        const fc = shadeColor(color, -12); // çerçeve rengi
+        const pc = shadeColor(color, +8);  // panel rengi
+        const fw = 0.032; // çerçeve genişliği
+        const ShakerDoor = ({ x, w, handleSide }: { x: number; w: number; handleSide: "left" | "right" }) => (
+          <group position={[x, 0, D / 2 + doorT / 2]}>
+            {/* Dış çerçeve */}
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[w, doorH, doorT]} />
+              <meshStandardMaterial color={fc} metalness={mat.metalness} roughness={mat.roughness + 0.08} {...MAT_OFFSET} />
+            </mesh>
+            {/* İç panel (hafif içeride) */}
+            <mesh position={[0, 0, 0.002]}>
+              <boxGeometry args={[w - fw * 2, doorH - fw * 2, doorT * 0.6]} />
+              <meshStandardMaterial color={pc} metalness={mat.metalness} roughness={mat.roughness} {...MAT_OFFSET} />
+            </mesh>
+            {/* Tutamaç */}
+            <group position={[handleSide === "right" ? w * 0.32 : -w * 0.32, 0, doorT / 2 + 0.014]}>
+              <mesh><boxGeometry args={[0.010, 0.080, 0.010]} /><meshStandardMaterial color="#B0B8C0" metalness={0.9} roughness={0.1} {...MAT_OFFSET} /></mesh>
+              <mesh position={[0, 0.044, -0.004]}><cylinderGeometry args={[0.007, 0.007, 0.010, 8]} /><meshStandardMaterial color="#9CA3AF" metalness={0.85} roughness={0.15} {...MAT_OFFSET} /></mesh>
+              <mesh position={[0, -0.044, -0.004]}><cylinderGeometry args={[0.007, 0.007, 0.010, 8]} /><meshStandardMaterial color="#9CA3AF" metalness={0.85} roughness={0.15} {...MAT_OFFSET} /></mesh>
+            </group>
+          </group>
+        );
+        if (isDouble) {
+          const halfW = (doorW - gap) / 2;
+          return <><ShakerDoor x={-(halfW / 2 + gap / 2)} w={halfW} handleSide="right" /><ShakerDoor x={(halfW / 2 + gap / 2)} w={halfW} handleSide="left" /></>;
+        }
+        return <ShakerDoor x={0} w={doorW} handleSide="right" />;
+      })()}
+
       {/* ── Raflar (çift tıkla bölüm yüksekliğini düzenle) ─────────────────── */}
       {cab.variant === "multiShelf" && shelfYs.map((yPos, i) => {
         const isEditing = editingShelf?.cabId === cab.id && editingShelf?.sectionIndex === i;
@@ -856,6 +923,7 @@ function createCabinet(id: number, variant: CabinetVariant, customSections?: Cus
     colorHex: COLOR_PALETTES.mdflam[0].hex,
     shelfSpacingCm: 35,
     hasDoor: false,
+    doorStyle: "classic" as DoorStyle,
     lockedTo: null as number | null
   };
   if (variant === "drawerWardrobe") return { ...base, heightRatio: 0.82, widthFactor: 0.23, depthFactor: 0.22 };
@@ -1096,6 +1164,7 @@ function ModuPlanApp() {
   const [placedProduct, setPlacedProduct] = useState<{
     product: TryProduct;
     pos: [number, number, number];
+    rotated: boolean; // düşey (true) = w↔h yer değiştirir — askılıkta pantolon uzunlamasına
   } | null>(null);
   // Aktif sürükleme ekseni — panelden seçilir, 3D içinde kullanılır
   const [productAxis, setProductAxis] = useState<"xz" | "y">("xz");
@@ -1923,6 +1992,14 @@ function ModuPlanApp() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Oda planına geri dön */}
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 transition flex items-center gap-1.5"
+          >
+            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+            Planı Düzenle
+          </button>
           <button
             onClick={() => setShowBuyLinks(true)}
             className="px-4 py-2 rounded-2xl bg-emerald-500 text-white text-xs font-semibold shadow-sm hover:bg-emerald-600 transition flex items-center gap-1.5"
@@ -1977,6 +2054,49 @@ function ModuPlanApp() {
                 <meshStandardMaterial color="#E5E7EB" />
               </mesh>
 
+              {/* ── Oda Planı Mobilyaları — onboarding'den gelen eşyalar ── */}
+              {obFurniture.map(item => {
+                const def = OB_FURN_DEFS[item.type];
+                if (!def) return null;
+                const fw = item.w * CM_TO_M;
+                const fh = 0.5; // Mobilya yüksekliği 50cm sabit (sembolik)
+                const fd = item.h * CM_TO_M;
+                // 2D plan koordinatlarını 3D dünya koordinatlarına çevir
+                // Plan: rx=0 → sol duvar, ry=0 → arka duvar
+                const x3d = (item.rx + item.w / 2) * CM_TO_M - roomWidthM / 2;
+                const z3d = (item.ry + item.h / 2) * CM_TO_M - roomDepthM / 2;
+                const furColor = item.type === "cab-mark" ? "#3B82F6" : def.color;
+                return (
+                  <group key={item.id} position={[x3d, fh / 2, z3d]}>
+                    <mesh>
+                      <boxGeometry args={[fw, fh, fd]} />
+                      <meshStandardMaterial
+                        color={furColor}
+                        transparent
+                        opacity={item.type === "cab-mark" ? 0.20 : 0.35}
+                        depthWrite={false}
+                      />
+                    </mesh>
+                    <lineSegments>
+                      <edgesGeometry args={[new THREE.BoxGeometry(fw, fh, fd)]} />
+                      <lineBasicMaterial color={item.type === "cab-mark" ? "#1D4ED8" : "#888780"} />
+                    </lineSegments>
+                    <Html position={[0, fh / 2 + 0.08, 0]} center distanceFactor={5} style={{ pointerEvents: "none" }}>
+                      <div style={{
+                        fontSize: 9, fontFamily: "system-ui", fontWeight: 600,
+                        color: item.type === "cab-mark" ? "#1D4ED8" : "#444441",
+                        background: "rgba(255,255,255,0.85)",
+                        borderRadius: 4, padding: "2px 5px",
+                        whiteSpace: "nowrap",
+                        border: `1px solid ${item.type === "cab-mark" ? "#93C5FD" : "#D1D5DB"}`,
+                      }}>
+                        {def.label}
+                      </div>
+                    </Html>
+                  </group>
+                );
+              })}
+
               {/* Dolaplar */}
               <group ref={exportGroupRef}>
                 {cabinets.map(cab => (
@@ -2018,9 +2138,10 @@ function ModuPlanApp() {
 
               {/* ── Ürün Dene — Tek mesh, tek düzlem, eksen panelden ── */}
               {placedProduct && (() => {
-                const { product: prod, pos } = placedProduct;
-                const pW = prod.w * CM_TO_M;
-                const pH = prod.h * CM_TO_M;
+                const { product: prod, pos, rotated } = placedProduct;
+                // rotated=true → ürün düşey: genişlik ve yükseklik yer değiştirir (pantolon uzunlamasına)
+                const pW = (rotated ? prod.h : prod.w) * CM_TO_M;
+                const pH = (rotated ? prod.w : prod.h) * CM_TO_M;
                 const pD = prod.d * CM_TO_M;
 
                 // En yakın dolaba göre sığma kontrolü
@@ -2437,7 +2558,7 @@ function ModuPlanApp() {
                           setPlacedProduct(null);
                           setTryProductId(null);
                         } else {
-                          setPlacedProduct({ product: prod, pos: startPos });
+                          setPlacedProduct({ product: prod, pos: startPos, rotated: false });
                           setTryProductId(prod.id);
                         }
                       }}
@@ -2465,7 +2586,7 @@ function ModuPlanApp() {
                     <div className="text-[10px] text-slate-400 font-semibold">
                       🎯 <span className="text-white">{placedProduct.product.name}</span> sahnede
                     </div>
-                    {/* Hareket modu seçici */}
+                    {/* Konumlandırma + Rotasyon */}
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => setProductAxis("xz")}
@@ -2488,10 +2609,36 @@ function ModuPlanApp() {
                         ↕ Dikey
                       </button>
                     </div>
+                    {/* Düşey/Yatay konumlandırma (askılık için) */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-400">Ürün konumu:</span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setPlacedProduct(prev => prev ? { ...prev, rotated: false } : prev)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition ${
+                            !placedProduct.rotated ? "bg-amber-500 text-white" : "bg-slate-700 text-slate-400"
+                          }`}
+                          title="Yatay — normal konumlandırma"
+                        >
+                          — Yatay
+                        </button>
+                        <button
+                          onClick={() => setPlacedProduct(prev => prev ? { ...prev, rotated: true } : prev)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition ${
+                            placedProduct.rotated ? "bg-amber-500 text-white" : "bg-slate-700 text-slate-400"
+                          }`}
+                          title="Düşey — pantolon/elbise uzunlamasına"
+                        >
+                          | Düşey
+                        </button>
+                      </div>
+                    </div>
                     <div className="text-[9px] text-slate-500">
-                      {productAxis === "xz"
-                        ? "Ürünü sürükle → ileri/geri/yanlara taşır"
-                        : "Ürünü sürükle → yukarı/aşağı taşır"}
+                      {placedProduct.rotated
+                        ? "Düşey: pantolon/elbise uzunlamasına asılı"
+                        : productAxis === "xz"
+                        ? "Ürünü sürükle → yatay taşı"
+                        : "Ürünü sürükle → yüksekliği ayarla"}
                     </div>
                     <button
                       onClick={() => { setPlacedProduct(null); setTryProductId(null); }}
@@ -2555,6 +2702,60 @@ function ModuPlanApp() {
                 </button>
               </div>
 
+              {/* Kapak Stili */}
+              {selectedCab.hasDoor && (
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 mb-2">Kapak Stili</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      { key: "classic", label: "Klasik", desc: "Göbekli" },
+                      { key: "flat",    label: "Düz",    desc: "Modern" },
+                      { key: "shaker",  label: "Shaker", desc: "Çerçeveli" },
+                    ] as { key: DoorStyle; label: string; desc: string }[]).map(s => (
+                      <button
+                        key={s.key}
+                        onClick={() => setCabinets(prev => prev.map(c =>
+                          c.id === selectedId ? { ...c, doorStyle: s.key } : c
+                        ))}
+                        className={`flex flex-col items-center gap-1 px-1 py-2 rounded-xl border text-[10px] font-medium transition ${
+                          (selectedCab.doorStyle ?? "classic") === s.key
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-200 hover:border-slate-300 text-slate-600"
+                        }`}
+                      >
+                        {/* Mini kapak önizlemesi */}
+                        <div className="w-8 h-8 rounded border border-slate-200 flex items-center justify-center overflow-hidden"
+                          style={{ background: selectedCab.colorHex }}>
+                          {s.key === "classic" && (
+                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
+                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
+                              <rect x="3" y="3" width="16" height="9" rx="0.5" fill="rgba(255,255,255,0.15)" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+                              <rect x="3" y="14" width="16" height="9" rx="0.5" fill="rgba(255,255,255,0.15)" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+                              <rect x="10" y="11" width="2" height="4" rx="1" fill="rgba(0,0,0,0.2)"/>
+                            </svg>
+                          )}
+                          {s.key === "flat" && (
+                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
+                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
+                              <rect x="9" y="11" width="4" height="4" rx="2" fill="rgba(0,0,0,0.2)"/>
+                            </svg>
+                          )}
+                          {s.key === "shaker" && (
+                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
+                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
+                              <rect x="3" y="3" width="16" height="20" rx="0.5" fill="rgba(255,255,255,0.1)" stroke="rgba(0,0,0,0.12)" strokeWidth="1.2"/>
+                              <rect x="10" y="11" width="2" height="4" rx="1" fill="rgba(0,0,0,0.2)"/>
+                            </svg>
+                          )}
+                        </div>
+                        <span>{s.label}</span>
+                        <span className="text-[9px] text-slate-400">{s.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Yanındakine Kilitle / Kilidi Aç */}
               <button
                 type="button"
@@ -2569,7 +2770,87 @@ function ModuPlanApp() {
                 {selectedCab.lockedTo != null ? "🔒 Kilitli — Kilidi Aç" : "🔗 Yanındakine Kilitle"}
               </button>
 
-              {/* Kaplama Türü */}
+              {/* ── İç Yapı Editörü ── */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-semibold text-slate-500">İç Yapı</div>
+                  <div className="text-[9px] text-slate-400">
+                    {(selectedCab.customSections ?? []).reduce((s, x) => s + x.heightCm, 0)} cm
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-xl overflow-hidden mb-2">
+                  {(!selectedCab.customSections || selectedCab.customSections.length === 0) && (
+                    <div className="px-3 py-2 text-center text-[10px] text-slate-400">
+                      Varsayılan düzen — aşağıdan bölüm ekle
+                    </div>
+                  )}
+                  {(selectedCab.customSections ?? []).map((sec, idx) => (
+                    <div key={sec.id} className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <span className="text-slate-200 text-xs cursor-grab">⠿</span>
+                      <select
+                        value={sec.type}
+                        onChange={e => setCabinets(prev => prev.map(c => c.id === selectedId
+                          ? { ...c, customSections: (c.customSections ?? []).map(s =>
+                              s.id === sec.id ? { ...s, type: e.target.value as CustomSection["type"] } : s
+                            )}
+                          : c
+                        ))}
+                        className="text-[10px] bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-600 flex-shrink-0"
+                      >
+                        <option value="shelf">Raf</option>
+                        <option value="drawer">Çekmece</option>
+                        <option value="hanger">Askılık</option>
+                        <option value="open">Açık</option>
+                      </select>
+                      <input
+                        type="number" min={10} max={250}
+                        value={sec.heightCm}
+                        onChange={e => {
+                          const v = Math.max(10, Math.min(250, parseInt(e.target.value) || 10));
+                          setCabinets(prev => prev.map(c => c.id === selectedId
+                            ? { ...c, customSections: (c.customSections ?? []).map(s =>
+                                s.id === sec.id ? { ...s, heightCm: v } : s
+                              )}
+                            : c
+                          ));
+                        }}
+                        className="w-12 text-[10px] text-center bg-white border border-slate-200 rounded px-1 py-0.5 font-semibold"
+                      />
+                      <span className="text-[9px] text-slate-400">cm</span>
+                      <button
+                        onClick={() => setCabinets(prev => prev.map(c => c.id === selectedId
+                          ? { ...c, customSections: (c.customSections ?? []).filter(s => s.id !== sec.id) }
+                          : c
+                        ))}
+                        className="ml-auto text-slate-200 hover:text-red-400 text-xs"
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+                {/* Bölüm ekle */}
+                <div className="flex flex-wrap gap-1">
+                  {([
+                    { type: "shelf" as const,   label: "+ Raf",      h: 35  },
+                    { type: "drawer" as const,  label: "+ Çekmece",  h: 20  },
+                    { type: "hanger" as const,  label: "+ Askılık",  h: 115 },
+                    { type: "open" as const,    label: "+ Açık",     h: 45  },
+                  ]).map(({ type, label, h }) => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        const newSec: CustomSection = { id: Date.now(), type, heightCm: h };
+                        setCabinets(prev => prev.map(c => c.id === selectedId
+                          ? { ...c, customSections: [...(c.customSections ?? []), newSec] }
+                          : c
+                        ));
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:border-primary/40 hover:bg-primary/5 text-[10px] text-slate-500 hover:text-primary transition"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <div className="text-[11px] font-semibold text-slate-500 mb-2">Kaplama Türü</div>
                 <div className="grid grid-cols-3 gap-1.5">
