@@ -246,7 +246,8 @@ function CabinetMesh({
   onChangePosition, onChangeWidthFactor, onChangeHeightFactor, onSelect,
   onInteractionStart, onInteractionEnd,
   dragMeasure, onWidthDragValue, onHeightDragValue, onWidthDragEnd, onHeightDragEnd,
-  editingShelf, onShelfDoubleClick, onShelfHeightSubmit
+  editingShelf, onShelfDoubleClick, onShelfHeightSubmit,
+  onSectionResize, onChangeDepthFactor, onDepthDragValue, onDepthDragEnd
 }: {
   cab: Cabinet; room: RoomSize; selected: boolean;
   onChangePosition: (id: number, x: number, z: number) => void;
@@ -255,7 +256,7 @@ function CabinetMesh({
   onSelect: (id: number) => void;
   onInteractionStart: () => void;
   onInteractionEnd: () => void;
-  dragMeasure: { value: string; type: "width" | "height" } | null;
+  dragMeasure: { value: string; type: "width" | "height" | "depth" } | null;
   onWidthDragValue?: (v: string) => void;
   onHeightDragValue?: (v: string) => void;
   onWidthDragEnd?: () => void;
@@ -263,6 +264,10 @@ function CabinetMesh({
   editingShelf: { cabId: number; sectionIndex: number } | null;
   onShelfDoubleClick?: (cabId: number, sectionIndex: number) => void;
   onShelfHeightSubmit?: (cabId: number, sectionIndex: number, heightCm: number) => void;
+  onSectionResize?: (cabId: number, divIdx: number, newTopH: number, newBotH: number) => void;
+  onChangeDepthFactor?: (id: number, df: number) => void;
+  onDepthDragValue?: (v: string) => void;
+  onDepthDragEnd?: () => void;
 }) {
   const heightCm = room.height * cab.heightRatio;
   const widthCm  = heightCm * cab.widthFactor;
@@ -346,8 +351,33 @@ function CabinetMesh({
     onInteractionEnd();
   };
 
-  const widthDragEvents = { onPointerDown: handleWidthPD, onPointerMove: handleWidthPM, onPointerUp: handleWidthPU };
+  const widthDragEvents  = { onPointerDown: handleWidthPD,  onPointerMove: handleWidthPM,  onPointerUp: handleWidthPU  };
   const heightDragEvents = { onPointerDown: handleHeightPD, onPointerMove: handleHeightPM, onPointerUp: handleHeightPU };
+
+  // ── Derinlik sürükleme (ön panel) ──────────────────────────────────────
+  const handleDepthPD = (e: any) => {
+    e.stopPropagation(); onSelect(cab.id); onInteractionStart();
+    onDepthDragValue?.(Math.round(depthCm).toString());
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const handleDepthPM = (e: any) => {
+    if (!onChangeDepthFactor) return;
+    e.stopPropagation();
+    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -cab.x);
+    const hit = new THREE.Vector3();
+    e.ray.intersectPlane(plane, hit);
+    const newDcm = Math.max(20, Math.min(120, (Math.abs(hit.z - cab.z) / CM_TO_M) * 2));
+    onChangeDepthFactor(cab.id, newDcm / heightCm);
+    onDepthDragValue?.(Math.round(newDcm).toString());
+  };
+  const handleDepthPU = (e: any) => {
+    e.stopPropagation();
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    onDepthDragEnd?.();
+    onInteractionEnd();
+  };
+  const depthDragEvents = { onPointerDown: handleDepthPD, onPointerMove: handleDepthPM, onPointerUp: handleDepthPU };
 
   const matP = { ...matBase, color, emissive: selected ? "#ffffff" : "#000000", emissiveIntensity: selected ? 0.05 : 0 };
   const matInner = { ...matBase, color: innerColor, roughness: mat.roughness + 0.1 };
@@ -517,6 +547,26 @@ function CabinetMesh({
         <boxGeometry args={[W - T * 2, H - T * 2, T * 0.5]} />
         <meshStandardMaterial {...matInner} {...MAT_OFFSET} />
       </mesh>
+      {/* Ön sürükleme paneli — derinlik ayarı */}
+      <mesh castShadow receiveShadow position={[0, 0, D / 2 - T / 2]} {...depthDragEvents}>
+        <boxGeometry args={[W - T * 2, H - T * 2, T]} />
+        <meshStandardMaterial {...matP} {...MAT_OFFSET} transparent opacity={cab.hasDoor ? 0 : 1} />
+      </mesh>
+      {/* ── Derinlik sürükleme ikonu ── */}
+      {selected && !cab.hasDoor && (
+        <Html position={[0, -H / 2 - 0.06, D / 2]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+          <div style={{
+            background: "rgba(16,185,129,0.90)",
+            borderRadius: "6px", padding: "4px 5px",
+            display: "flex", alignItems: "center",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)", userSelect: "none",
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M5 12h14M12 5l-4 7h8l-4-7zM12 19l-4-7h8l-4 7z"/>
+            </svg>
+          </div>
+        </Html>
+      )}
 
       {/* ── Kapak — Klasik göbekli çerçeve kapak ────────────────────────────── */}
       {cab.hasDoor && (() => {
@@ -796,8 +846,8 @@ function CabinetMesh({
         </group>
       )}
 
-      {/* ── Özel modül bölümleri ─────────────────────────────────────────── */}
-      {cab.variant === "custom" && cab.customSections && (() => {
+      {/* ── Özel modül bölümleri — tüm variant'larda çalışır ──────────────── */}
+      {cab.customSections && cab.customSections.length > 0 && (() => {
         const sections = cab.customSections!;
         const totalCm = sections.reduce((s, sec) => s + sec.heightCm, 0);
         if (totalCm === 0) return null;
@@ -810,32 +860,81 @@ function CabinetMesh({
           const secCenterY = curY - secH / 2;
           const botY = curY - secH;
 
-          // Bölme çizgisi (alta)
+          // Bölme çizgisi (alta) — sürüklenebilir
           if (i < sections.length - 1) {
+            const divIdx = i; // closure için
             elements.push(
-              <mesh key={`cdiv${i}`} castShadow position={[0, botY, 0]}>
-                <boxGeometry args={[W - T * 2, T, D - T * 1.5]} />
-                <meshStandardMaterial color={color} metalness={mat.metalness} roughness={mat.roughness} />
-              </mesh>
+              <group key={`cdiv${i}`}>
+                {/* Görsel panel */}
+                <mesh castShadow position={[0, botY, 0]}>
+                  <boxGeometry args={[W - T * 2, T, D - T * 1.5]} />
+                  <meshStandardMaterial color={color} metalness={mat.metalness} roughness={mat.roughness} />
+                </mesh>
+                {/* Sürükleme tutamaç alanı — daha geniş hit area */}
+                <mesh
+                  position={[0, botY, D / 2 + 0.005]}
+                  onPointerDown={(e: any) => {
+                    e.stopPropagation();
+                    onInteractionStart();
+                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  }}
+                  onPointerMove={(e: any) => {
+                    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
+                    e.stopPropagation();
+                    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(cab.z + D / 2));
+                    const hit = new THREE.Vector3();
+                    e.ray.intersectPlane(plane, hit);
+                    const newBotAbsY = hit.y; // world Y
+                    const topAbsY = H / 2 - T; // top of sections area (world relative)
+                    const fromTop = (topAbsY - newBotAbsY); // distance from top
+                    const newTopH = Math.max(8, Math.round(fromTop / CM_TO_M / scale - sections.slice(0, divIdx).reduce((s, x) => s + x.heightCm, 0)));
+                    const delta = newTopH - sections[divIdx].heightCm;
+                    const nextH = Math.max(8, sections[divIdx + 1].heightCm - delta);
+                    if (newTopH >= 8 && nextH >= 8) {
+                      onSectionResize?.(cab.id, divIdx, newTopH, nextH);
+                    }
+                  }}
+                  onPointerUp={(e: any) => {
+                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                    onInteractionEnd();
+                  }}
+                >
+                  <boxGeometry args={[W - T * 2, 0.022, 0.018]} />
+                  <meshStandardMaterial color="#60A5FA" transparent opacity={0} />
+                </mesh>
+                {/* Görsel sürükleme ipucu — hover/seçili dolap */}
+                {selected && (
+                  <Html position={[-W / 2 - 0.04, botY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                    <div style={{ fontSize: 8, color: "#60A5FA", fontFamily: "system-ui", userSelect: "none" }}>↕</div>
+                  </Html>
+                )}
+              </group>
             );
           }
 
           // Bölüm içeriği
-          if (sec.type === "drawer") {
-            // Çekmece tutamaçları
+          if (sec.type === "drawer" || sec.type === "deep-drawer") {
+            // Çekmece yüzeyi + tutamaç
+            const drawerColor = sec.type === "deep-drawer" ? shadeColor(color, -8) : shadeColor(color, +5);
             elements.push(
-              <group key={`csec${i}`} position={[0, secCenterY, D / 2 + 0.003]}>
-                <mesh>
-                  <boxGeometry args={[W * 0.3, 0.013, 0.013]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} />
+              <group key={`csec${i}`}>
+                {/* Çekmece yüzü */}
+                <mesh castShadow position={[0, secCenterY, D / 2 + 0.009]}>
+                  <boxGeometry args={[W - T * 2.2, secH - 0.008, 0.016]} />
+                  <meshStandardMaterial color={drawerColor} metalness={mat.metalness + 0.03} roughness={mat.roughness - 0.05} {...MAT_OFFSET} />
                 </mesh>
-                <mesh position={[-W * 0.14, -0.02, -0.005]}>
-                  <boxGeometry args={[0.009, 0.024, 0.009]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} />
+                {/* Yatay tutamaç */}
+                <mesh position={[0, secCenterY, D / 2 + 0.021]}>
+                  <boxGeometry args={[W * 0.35, 0.010, 0.010]} />
+                  <meshStandardMaterial color="#9CA3AF" metalness={0.88} roughness={0.12} {...MAT_OFFSET} />
                 </mesh>
-                <mesh position={[W * 0.14, -0.02, -0.005]}>
-                  <boxGeometry args={[0.009, 0.024, 0.009]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} />
+                <mesh position={[-W * 0.16, secCenterY - 0.018, D / 2 + 0.017]}>
+                  <boxGeometry args={[0.009, 0.022, 0.009]} />
+                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} {...MAT_OFFSET} />
+                </mesh>
+                <mesh position={[W * 0.16, secCenterY - 0.018, D / 2 + 0.017]}>
+                  <boxGeometry args={[0.009, 0.022, 0.009]} />
+                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} {...MAT_OFFSET} />
                 </mesh>
               </group>
             );
@@ -856,10 +955,37 @@ function CabinetMesh({
                 </mesh>
               </group>
             );
+          } else if (sec.type === "jewelry-drawer") {
+            // Takı çekmecesi — ince, mor aksan
+            elements.push(
+              <group key={`csec${i}`}>
+                <mesh castShadow position={[0, secCenterY, D / 2 + 0.009]}>
+                  <boxGeometry args={[W - T * 2.2, secH - 0.006, 0.014]} />
+                  <meshStandardMaterial color={shadeColor(color, +12)} metalness={mat.metalness + 0.05} roughness={mat.roughness - 0.08} {...MAT_OFFSET} />
+                </mesh>
+                {/* Küçük yuvarlak kulp */}
+                <mesh position={[0, secCenterY, D / 2 + 0.020]}>
+                  <cylinderGeometry args={[0.012, 0.012, 0.008, 16]} />
+                  <meshStandardMaterial color="#C084FC" metalness={0.9} roughness={0.1} {...MAT_OFFSET} />
+                </mesh>
+              </group>
+            );
+          } else if (sec.type === "shoe-rack") {
+            // Ayakkabı rafı — eğik çubuklar
+            const rodCount = Math.max(2, Math.floor((W - T * 2) / 0.08));
+            for (let r = 0; r < Math.min(rodCount, 8); r++) {
+              const rx = -(W - T * 2) / 2 + (r + 0.5) * ((W - T * 2) / rodCount);
+              elements.push(
+                <mesh key={`shoe${i}_${r}`} position={[rx, secCenterY, 0]} rotation={[0.3, 0, 0]}>
+                  <cylinderGeometry args={[0.005, 0.005, D * 0.85, 8]} />
+                  <meshStandardMaterial color="#818CF8" metalness={0.7} roughness={0.3} />
+                </mesh>
+              );
+            }
           }
           // shelf & open: sadece bölme çizgisi yeterli
 
-          // Boyut etiketi
+          // Boyut etiketi (sağda) + sürüklenebilir bölme çizgisi (alta)
           elements.push(
             <Html key={`clbl${i}`} position={[W / 2 + 0.02, secCenterY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
               <div style={{ fontSize: "9px", color: "rgba(0,0,0,0.3)", whiteSpace: "nowrap", fontFamily: "system-ui, sans-serif", userSelect: "none" }}>
@@ -902,14 +1028,32 @@ function CabinetMesh({
         </Html>
       ))}
 
-      {/* ── Sürükleme tooltip (genişlik/yükseklik cm) ─────────────────────── */}
-      {dragMeasure && (
-        <Html position={[0, dragMeasure.type === "height" ? H / 2 - T : 0, D / 2 + 0.05]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
-          <div className="rounded px-2 py-1 text-xs font-semibold bg-white text-slate-800 shadow-md whitespace-nowrap">
-            {dragMeasure.value} cm
-          </div>
-        </Html>
-      )}
+      {/* ── Sürükleme tooltip (genişlik/yükseklik/derinlik cm) ────────────── */}
+      {dragMeasure && (() => {
+        const pos: [number,number,number] =
+          dragMeasure.type === "height" ? [0, H / 2 + 0.06, D / 2 + 0.05] :
+          dragMeasure.type === "depth"  ? [0, -H / 2 - 0.08, D / 2 + 0.05] :
+          [W / 2 + 0.08, 0, D / 2 + 0.05];
+        const color =
+          dragMeasure.type === "height" ? "#2563EB" :
+          dragMeasure.type === "depth"  ? "#10B981" : "#2563EB";
+        const label =
+          dragMeasure.type === "height" ? "↕ " :
+          dragMeasure.type === "depth"  ? "◆ " : "↔ ";
+        return (
+          <Html position={pos} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+            <div style={{
+              background: color, color: "white",
+              borderRadius: 6, padding: "3px 8px",
+              fontSize: 11, fontWeight: 700,
+              fontFamily: "system-ui", whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            }}>
+              {label}{dragMeasure.value} cm
+            </div>
+          </Html>
+        );
+      })()}
     </group>
   );
 }
@@ -1079,40 +1223,27 @@ function buildTemplateLayout(
   sections: OnboardingSection[]
 ): Cabinet[] {
   const hr = Math.min(0.98, ((room.height - 5) / room.height));
-  const wf = Math.min(0.60, (room.width * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
-  const df = Math.min(0.40, (room.depth * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+  // Tek dolap — odanın tamamını kaplasın (max %80 genişlik)
+  const wf = Math.min(0.70, (room.width * 0.8 * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+  const df = Math.min(0.35, (room.depth * 0.6 * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
 
   const customSects: CustomSection[] = sections.map(s => ({
-    id: s.id, type: s.type, heightCm: s.heightCm
+    id: s.id, type: s.type as CustomSection["type"], heightCm: s.heightCm
   }));
 
-  const baseVariant: CabinetVariant =
-    key === "wardrobe" ? "wardrobe" :
-    key === "kitchen"  ? "drawerWardrobe" :
-    key === "custom"   ? "custom" :
-    "multiShelf";
+  const baseVariant: CabinetVariant = "custom"; // Her zaman custom — iç düzenleyici bölümleri kullanır
 
-  // Odaya sığan yatay dolap sayısı (max 4)
-  const cabWidthCm = Math.max(40, Math.min(120, room.width / 3));
-  const count = Math.min(4, Math.max(1, Math.floor(room.width / cabWidthCm)));
-  const spacingM = (room.width * CM_TO_M) / count;
-
-  return Array.from({ length: count }, (_, i) => {
-    const xPos = -((room.width * CM_TO_M) / 2) + spacingM * (i + 0.5);
-    const cab = createCabinet(i + 1, baseVariant, customSects.length > 0 ? customSects : undefined);
-    return {
-      ...cab,
-      id: i + 1,
-      x: xPos,
-      z: 0,
-      heightRatio: hr,
-      widthFactor: wf / count,
-      depthFactor: df,
-      shelfHeightsCm: key === "multiShelf" || key === "laundry" || key === "shoe"
-        ? sections.filter(s => s.type === "shelf").map(s => s.heightCm)
-        : undefined,
-    };
-  });
+  // Her zaman tek dolap — duvar dibine
+  const cab = createCabinet(1, baseVariant, customSects.length > 0 ? customSects : undefined);
+  return [{
+    ...cab,
+    id: 1,
+    x: 0,
+    z: -(room.depth * CM_TO_M) / 2 + (room.depth * CM_TO_M * df) / 2 + 0.05,
+    heightRatio: hr,
+    widthFactor: wf,
+    depthFactor: df,
+  }];
 }
 
 // ─── Ana Sayfa ────────────────────────────────────────────────────────────────
@@ -1249,6 +1380,7 @@ function ModuPlanApp() {
 
   // ── Özel modül tasarımcısı state ────────────────────────────────────────
   const [showCustomBuilder, setShowCustomBuilder] = useState(false);
+  const [cabPanelTab, setCabPanelTab] = useState<"dims"|"interior"|"style">("dims");
   const [customSections, setCustomSections] = useState<CustomSection[]>([
     { id: 1, type: "hanger", heightCm: 120 },
     { id: 2, type: "shelf",  heightCm: 40 },
@@ -1259,8 +1391,16 @@ function ModuPlanApp() {
 
   const addCabinet = (variant: CabinetVariant) => {
     const id = cabinets.length ? Math.max(...cabinets.map(c => c.id)) + 1 : 1;
-    const sections = variant === "custom" ? customSections.map(s => ({ ...s })) : undefined;
-    setCabinets(prev => [...prev, createCabinet(id, variant, sections)]);
+    const hr = Math.min(0.98, (room.height - 5) / room.height);
+    const wf = Math.min(0.50, (room.width * 0.6 * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+    const df = Math.min(0.30, (room.depth * 0.5 * CM_TO_M) / (room.height * CM_TO_M * hr + 0.001));
+    const zBack = -(room.depth * CM_TO_M) / 2 + (room.depth * CM_TO_M * df) / 2 + 0.05;
+    const base = createCabinet(id, "custom", [
+      { id: Date.now(), type: "hanger", heightCm: Math.round(room.height * hr * 0.55) },
+      { id: Date.now() + 1, type: "shelf", heightCm: Math.round(room.height * hr * 0.25) },
+      { id: Date.now() + 2, type: "drawer", heightCm: Math.round(room.height * hr * 0.20) },
+    ]);
+    setCabinets(prev => [...prev, { ...base, id, x: 0, z: zBack, heightRatio: hr, widthFactor: wf, depthFactor: df }]);
     setSelectedId(id);
   };
 
@@ -1294,7 +1434,10 @@ function ModuPlanApp() {
   const updateCabinetHeightFactor = (id: number, heightRatio: number) =>
     setCabinets(prev => prev.map(c => c.id === id ? { ...c, heightRatio } : c));
 
-  const [dragMeasure, setDragMeasure] = useState<{ cabId: number; value: string; type: "width" | "height" } | null>(null);
+  const updateCabinetDepthFactor = (id: number, depthFactor: number) =>
+    setCabinets(prev => prev.map(c => c.id === id ? { ...c, depthFactor } : c));
+
+  const [dragMeasure, setDragMeasure] = useState<{ cabId: number; value: string; type: "width" | "height" | "depth" } | null>(null);
   const dragMeasureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleDragMeasureHide = () => {
     if (dragMeasureTimeoutRef.current) clearTimeout(dragMeasureTimeoutRef.current);
@@ -1303,12 +1446,12 @@ function ModuPlanApp() {
       dragMeasureTimeoutRef.current = null;
     }, 1500);
   };
-  const handleWidthDragValue = (cabId: number, value: string) =>
-    setDragMeasure({ cabId, value, type: "width" });
-  const handleHeightDragValue = (cabId: number, value: string) =>
-    setDragMeasure({ cabId, value, type: "height" });
-  const handleWidthDragEnd = () => scheduleDragMeasureHide();
+  const handleWidthDragValue  = (cabId: number, value: string) => setDragMeasure({ cabId, value, type: "width" });
+  const handleHeightDragValue = (cabId: number, value: string) => setDragMeasure({ cabId, value, type: "height" });
+  const handleDepthDragValue  = (cabId: number, value: string) => setDragMeasure({ cabId, value, type: "depth" });
+  const handleWidthDragEnd  = () => scheduleDragMeasureHide();
   const handleHeightDragEnd = () => scheduleDragMeasureHide();
+  const handleDepthDragEnd  = () => scheduleDragMeasureHide();
 
   const rotateSelectedCabinet = () => {
     if (selectedId == null) return;
@@ -1357,6 +1500,15 @@ function ModuPlanApp() {
     if (Number.isNaN(num) || num < 60 || num > room.height - 5) return;
     setCabinets(prev => prev.map(c =>
       c.id === selectedId ? { ...c, heightRatio: num / room.height } : c
+    ));
+  };
+  const updateSelectedDepthCm = (val: string) => {
+    if (selectedId == null || !selectedCab) return;
+    const num = parseInt(val, 10);
+    if (Number.isNaN(num) || num < 20 || num > 120) return;
+    const heightCm = room.height * selectedCab.heightRatio;
+    setCabinets(prev => prev.map(c =>
+      c.id === selectedId ? { ...c, depthFactor: num / heightCm } : c
     ));
   };
   const toggleSelectedHasDoor = () => {
@@ -2112,17 +2264,31 @@ function ModuPlanApp() {
                     onChangePosition={updateCabinetPosition}
                     onChangeWidthFactor={updateCabinetWidthFactor}
                     onChangeHeightFactor={updateCabinetHeightFactor}
+                    onChangeDepthFactor={updateCabinetDepthFactor}
                     onSelect={setSelectedId}
                     onInteractionStart={() => setOrbitInteracting(true)}
                     onInteractionEnd={() => setOrbitInteracting(false)}
                     dragMeasure={dragMeasure?.cabId === cab.id ? { value: dragMeasure.value, type: dragMeasure.type } : null}
                     onWidthDragValue={v => handleWidthDragValue(cab.id, v)}
                     onHeightDragValue={v => handleHeightDragValue(cab.id, v)}
+                    onDepthDragValue={v => handleDepthDragValue(cab.id, v)}
                     onWidthDragEnd={handleWidthDragEnd}
                     onHeightDragEnd={handleHeightDragEnd}
+                    onDepthDragEnd={handleDepthDragEnd}
                     editingShelf={editingShelf}
                     onShelfDoubleClick={(cid, idx) => setEditingShelf({ cabId: cid, sectionIndex: idx })}
                     onShelfHeightSubmit={updateCabinetShelfHeight}
+                    onSectionResize={(cabId, divIdx, newTopH, newBotH) => {
+                      setCabinets(prev => prev.map(c => {
+                        if (c.id !== cabId) return c;
+                        const secs = [...(c.customSections ?? [])];
+                        if (secs[divIdx] && secs[divIdx + 1]) {
+                          secs[divIdx] = { ...secs[divIdx], heightCm: newTopH };
+                          secs[divIdx + 1] = { ...secs[divIdx + 1], heightCm: newBotH };
+                        }
+                        return { ...c, customSections: secs };
+                      }));
+                    }}
                   />
                   </group>
                 ))}
@@ -2415,7 +2581,7 @@ function ModuPlanApp() {
                         if (item.isAddModule) { addCabinet("custom"); return; }
                         const newSec: CustomSection = { id: Date.now(), type: item.type, heightCm: defaults[item.type] };
                         setCabinets(prev => prev.map(c => c.id === selectedId
-                          ? { ...c, customSections: [...(c.customSections ?? []), newSec] }
+                          ? { ...c, variant: "custom", customSections: [...(c.customSections ?? []), newSec] }
                           : c
                         ));
                       }}
@@ -2740,290 +2906,248 @@ function ModuPlanApp() {
             )}
           </div>
 
-          {/* Seçili Dolap — Kaplama & Renk */}
+          {/* Seçili Dolap — Tabbed panel */}
           {selectedCab && (
-            <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
-              <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                <span>Seçili: {VARIANT_LABELS[selectedCab.variant]} #{selectedCab.id}</span>
-                {selectedCab.lockedTo != null && (
-                  <span className="text-amber-600" title="Yan yana kilitli">🔒</span>
-                )}
+            <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+
+              {/* Header — ad + aksiyon butonları */}
+              <div className="px-4 pt-3 pb-2 border-b border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Dolap #{selectedCab.id}
+                  </span>
+                  <div className="flex gap-1">
+                    <button onClick={rotateSelectedCabinet} title="90° Döndür"
+                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                    <button onClick={lockSelectedToNeighbor} disabled={cabinets.length < 2} title="Kilitle"
+                      className={`p-1.5 rounded-lg transition ${selectedCab.lockedTo != null ? "bg-amber-50 text-amber-600" : "hover:bg-slate-100 text-slate-500 disabled:opacity-30"}`}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </button>
+                    <button onClick={deleteSelected} title="Sil"
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Tabs */}
+                <div className="flex border border-slate-200 rounded-lg overflow-hidden">
+                  {([
+                    { id: "dims",     label: "Boyut" },
+                    { id: "interior", label: "İç Yapı" },
+                    { id: "style",    label: "Stil" },
+                  ] as { id: typeof cabPanelTab; label: string }[]).map(tab => (
+                    <button key={tab.id} onClick={() => setCabPanelTab(tab.id)}
+                      className={`flex-1 py-1.5 text-[11px] font-medium transition ${cabPanelTab === tab.id ? "bg-primary text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Genişlik / Yükseklik (cm) — 3D ile senkron */}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[11px] text-slate-500">Genişlik (cm)</span>
-                  <input
-                    type="number"
-                    min={40}
-                    max={400}
-                    value={Math.round(room.height * selectedCab.heightRatio * selectedCab.widthFactor)}
-                    onChange={e => updateSelectedWidthCm(e.target.value)}
-                    className="rounded-xl border border-slate-200 px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[11px] text-slate-500">Yükseklik (cm)</span>
-                  <input
-                    type="number"
-                    min={60}
-                    max={room.height - 5}
-                    value={Math.round(room.height * selectedCab.heightRatio)}
-                    onChange={e => updateSelectedHeightCm(e.target.value)}
-                    className="rounded-xl border border-slate-200 px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-              </div>
-              <p className="text-[10px] text-slate-400">Sağ yüzeyden genişlik, üst yüzeyden yükseklik sürükleyebilirsin.</p>
-
-              {/* Kapaklı / Kapaksız */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-500">Kapaklı</span>
-                <button
-                  role="switch"
-                  aria-checked={selectedCab.hasDoor}
-                  onClick={toggleSelectedHasDoor}
-                  className={`relative w-10 h-5 rounded-full transition ${selectedCab.hasDoor ? "bg-primary" : "bg-slate-300"}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition left-0.5 ${selectedCab.hasDoor ? "translate-x-5" : "translate-x-0"}`} />
-                </button>
-              </div>
-
-              {/* Kapak Stili */}
-              {selectedCab.hasDoor && (
-                <div>
-                  <div className="text-[11px] font-semibold text-slate-500 mb-2">Kapak Stili</div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {([
-                      { key: "classic", label: "Klasik", desc: "Göbekli" },
-                      { key: "flat",    label: "Düz",    desc: "Modern" },
-                      { key: "shaker",  label: "Shaker", desc: "Çerçeveli" },
-                    ] as { key: DoorStyle; label: string; desc: string }[]).map(s => (
-                      <button
-                        key={s.key}
-                        onClick={() => setCabinets(prev => prev.map(c =>
-                          c.id === selectedId ? { ...c, doorStyle: s.key } : c
-                        ))}
-                        className={`flex flex-col items-center gap-1 px-1 py-2 rounded-xl border text-[10px] font-medium transition ${
-                          (selectedCab.doorStyle ?? "classic") === s.key
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-slate-200 hover:border-slate-300 text-slate-600"
-                        }`}
-                      >
-                        {/* Mini kapak önizlemesi */}
-                        <div className="w-8 h-8 rounded border border-slate-200 flex items-center justify-center overflow-hidden"
-                          style={{ background: selectedCab.colorHex }}>
-                          {s.key === "classic" && (
-                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
-                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
-                              <rect x="3" y="3" width="16" height="9" rx="0.5" fill="rgba(255,255,255,0.15)" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
-                              <rect x="3" y="14" width="16" height="9" rx="0.5" fill="rgba(255,255,255,0.15)" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
-                              <rect x="10" y="11" width="2" height="4" rx="1" fill="rgba(0,0,0,0.2)"/>
-                            </svg>
-                          )}
-                          {s.key === "flat" && (
-                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
-                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
-                              <rect x="9" y="11" width="4" height="4" rx="2" fill="rgba(0,0,0,0.2)"/>
-                            </svg>
-                          )}
-                          {s.key === "shaker" && (
-                            <svg width="22" height="26" viewBox="0 0 22 26" fill="none">
-                              <rect x="1" y="1" width="20" height="24" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8"/>
-                              <rect x="3" y="3" width="16" height="20" rx="0.5" fill="rgba(255,255,255,0.1)" stroke="rgba(0,0,0,0.12)" strokeWidth="1.2"/>
-                              <rect x="10" y="11" width="2" height="4" rx="1" fill="rgba(0,0,0,0.2)"/>
-                            </svg>
-                          )}
-                        </div>
-                        <span>{s.label}</span>
-                        <span className="text-[9px] text-slate-400">{s.desc}</span>
-                      </button>
+              {/* TAB: Boyut */}
+              {cabPanelTab === "dims" && (
+                <div className="px-4 py-3 space-y-3">
+                  {/* 3 boyut — G / Y / D */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: "G (cm)", min: 40, max: 400, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.widthFactor), onChange: updateSelectedWidthCm, hint: "→ sağ kenar" },
+                      { label: "Y (cm)", min: 60, max: room.height - 5, val: Math.round(room.height * selectedCab.heightRatio), onChange: updateSelectedHeightCm, hint: "↑ üst kenar" },
+                      { label: "D (cm)", min: 20, max: 120, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.depthFactor), onChange: updateSelectedDepthCm, hint: "◆ ön yüzey" },
+                    ].map(({ label, min, max, val, onChange, hint }) => (
+                      <label key={label} className="flex flex-col gap-1">
+                        <span className="text-[10px] text-slate-500 font-medium">{label}</span>
+                        <input type="number" min={min} max={max} value={val}
+                          onChange={e => onChange(e.target.value)}
+                          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                        <span className="text-[9px] text-slate-400 text-center">{hint}</span>
+                      </label>
                     ))}
+                  </div>
+                  {/* Kapaklı toggle */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <span className="text-[11px] font-medium text-slate-600">Kapaklı</span>
+                    <button role="switch" aria-checked={selectedCab.hasDoor} onClick={toggleSelectedHasDoor}
+                      className={`relative w-9 h-5 rounded-full transition ${selectedCab.hasDoor ? "bg-primary" : "bg-slate-300"}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition left-0.5 ${selectedCab.hasDoor ? "translate-x-4" : "translate-x-0"}`} />
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Yanındakine Kilitle / Kilidi Aç */}
-              <button
-                type="button"
-                onClick={lockSelectedToNeighbor}
-                disabled={cabinets.length < 2}
-                className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                  selectedCab.lockedTo != null
-                    ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
-                }`}
-              >
-                {selectedCab.lockedTo != null ? "🔒 Kilitli — Kilidi Aç" : "🔗 Yanındakine Kilitle"}
-              </button>
-
-              {/* ── İç Yapı Editörü ── */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500">İç Yapı</div>
-                  <div className="text-[9px] text-slate-400">
-                    {(selectedCab.customSections ?? []).reduce((s, x) => s + x.heightCm, 0)} cm
+              {/* TAB: İç Yapı */}
+              {cabPanelTab === "interior" && (
+                <div className="p-3">
+                  {/* Hızlı ekleme butonları */}
+                  <div className="grid grid-cols-4 gap-1 mb-3">
+                    {([
+                      { type: "shelf" as const, label: "Raf", color: "#0ea5e9", h: 35 },
+                      { type: "drawer" as const, label: "Çekmece", color: "#f59e0b", h: 20 },
+                      { type: "deep-drawer" as const, label: "Derin", color: "#f97316", h: 35 },
+                      { type: "hanger" as const, label: "Askı", color: "#22c55e", h: 115 },
+                      { type: "jewelry-drawer" as const, label: "Takı", color: "#d946ef", h: 12 },
+                      { type: "shoe-rack" as const, label: "Ayakkabı", color: "#6366f1", h: 20 },
+                      { type: "open" as const, label: "Açık", color: "#94a3b8", h: 45 },
+                    ]).map(({ type, label, color, h }) => (
+                      <button key={type}
+                        onClick={() => {
+                          const ns: CustomSection = { id: Date.now(), type, heightCm: h };
+                          setCabinets(prev => prev.map(c => c.id === selectedId
+                            ? { ...c, variant: "custom" as const, customSections: [...(c.customSections ?? []), ns] }
+                            : c));
+                        }}
+                        className="flex flex-col items-center gap-0.5 py-1.5 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition"
+                        style={{ borderLeftColor: color, borderLeftWidth: 2 }}>
+                        <span className="text-[9px] font-medium text-slate-600 leading-tight text-center px-0.5">{label}</span>
+                        <span className="text-[8px] text-slate-400">{h}cm</span>
+                      </button>
+                    ))}
                   </div>
-                </div>
-                <div className="border border-slate-200 rounded-xl overflow-hidden mb-2">
-                  {(!selectedCab.customSections || selectedCab.customSections.length === 0) && (
-                    <div className="px-3 py-2 text-center text-[10px] text-slate-400">
-                      Varsayılan düzen — aşağıdan bölüm ekle
+                  {/* Bölüm listesi */}
+                  {(!selectedCab.customSections || selectedCab.customSections.length === 0) ? (
+                    <div className="text-center py-3 text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                      Yukarıdan bölüm ekle<br/>
+                      <span className="text-[9px]">Bölme çizgisini 3D'de sürükleyerek boyutlandır</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                      {(() => {
+                        const typeLabel: Record<string, { l: string; c: string }> = {
+                          shelf: { l: "Raf", c: "#0ea5e9" },
+                          drawer: { l: "Çekmece", c: "#f59e0b" },
+                          "deep-drawer": { l: "Derin çekmece", c: "#f97316" },
+                          hanger: { l: "Askılık", c: "#22c55e" },
+                          "jewelry-drawer": { l: "Takı çekmecesi", c: "#d946ef" },
+                          "shoe-rack": { l: "Ayakkabı rafı", c: "#6366f1" },
+                          open: { l: "Açık alan", c: "#94a3b8" },
+                        };
+                        const total = selectedCab.customSections!.reduce((s,x) => s + x.heightCm, 0);
+                        const max = Math.round(room.height * selectedCab.heightRatio);
+                        return selectedCab.customSections!.map((sec, idx) => {
+                          const { l, c } = typeLabel[sec.type] ?? { l: sec.type, c: "#94a3b8" };
+                          return (
+                            <div key={sec.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg group hover:bg-slate-50">
+                              <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: c }} />
+                              <span className="flex-1 text-[10px] text-slate-600 truncate">{l}</span>
+                              <input type="number" min={8} max={250} value={sec.heightCm}
+                                onChange={e => {
+                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || 8));
+                                  setCabinets(prev => prev.map(cab => cab.id === selectedId
+                                    ? { ...cab, customSections: (cab.customSections ?? []).map(s => s.id === sec.id ? { ...s, heightCm: v } : s) }
+                                    : cab));
+                                }}
+                                className="w-10 text-[10px] text-center border border-slate-200 rounded px-0.5 py-0.5 font-semibold focus:outline-none"
+                                style={{ color: c }} />
+                              <span className="text-[9px] text-slate-400">cm</span>
+                              <div className="flex flex-col opacity-0 group-hover:opacity-100 transition flex-shrink-0">
+                                <button disabled={idx === 0}
+                                  onClick={() => setCabinets(prev => prev.map(cab => {
+                                    if (cab.id !== selectedId) return cab;
+                                    const arr = [...(cab.customSections ?? [])];
+                                    [arr[idx-1], arr[idx]] = [arr[idx], arr[idx-1]];
+                                    return { ...cab, customSections: arr };
+                                  }))} className="text-[8px] text-slate-400 hover:text-slate-700 disabled:opacity-20">▲</button>
+                                <button disabled={idx === selectedCab.customSections!.length - 1}
+                                  onClick={() => setCabinets(prev => prev.map(cab => {
+                                    if (cab.id !== selectedId) return cab;
+                                    const arr = [...(cab.customSections ?? [])];
+                                    [arr[idx], arr[idx+1]] = [arr[idx+1], arr[idx]];
+                                    return { ...cab, customSections: arr };
+                                  }))} className="text-[8px] text-slate-400 hover:text-slate-700 disabled:opacity-20">▼</button>
+                              </div>
+                              <button onClick={() => setCabinets(prev => prev.map(cab => cab.id === selectedId
+                                ? { ...cab, customSections: (cab.customSections ?? []).filter(s => s.id !== sec.id) }
+                                : cab))} className="text-slate-200 hover:text-red-400 transition opacity-0 group-hover:opacity-100 text-xs">✕</button>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   )}
-                  {(selectedCab.customSections ?? []).map((sec, idx) => (
-                    <div key={sec.id} className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                      <span className="text-slate-200 text-xs cursor-grab">⠿</span>
-                      <select
-                        value={sec.type}
-                        onChange={e => setCabinets(prev => prev.map(c => c.id === selectedId
-                          ? { ...c, customSections: (c.customSections ?? []).map(s =>
-                              s.id === sec.id ? { ...s, type: e.target.value as CustomSection["type"] } : s
-                            )}
-                          : c
+                  {/* Toplam gösterge */}
+                  {selectedCab.customSections && selectedCab.customSections.length > 0 && (() => {
+                    const total = selectedCab.customSections!.reduce((s,x) => s + x.heightCm, 0);
+                    const max = Math.round(room.height * selectedCab.heightRatio);
+                    const over = total > max;
+                    return (
+                      <div className={`mt-2 text-[9px] px-2 py-1 rounded flex items-center justify-between ${over ? "bg-red-50 text-red-500" : "bg-slate-50 text-slate-500"}`}>
+                        <span>{over ? "⚠ Fazla:" : "Toplam:"} {total} cm</span>
+                        <span>Dolap: {max} cm{over ? ` (+${total-max})` : ` (${max-total} boş)`}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* TAB: Stil */}
+              {cabPanelTab === "style" && (
+                <div className="px-4 py-3 space-y-3">
+                  {/* Kapak stili */}
+                  {selectedCab.hasDoor && (
+                    <div>
+                      <div className="text-[10px] font-medium text-slate-500 mb-1.5">Kapak stili</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([
+                          { key: "classic" as DoorStyle, label: "Klasik", desc: "Göbekli" },
+                          { key: "flat"    as DoorStyle, label: "Düz",    desc: "Modern" },
+                          { key: "shaker"  as DoorStyle, label: "Shaker", desc: "Çerçeveli" },
+                        ]).map(s => (
+                          <button key={s.key}
+                            onClick={() => setCabinets(prev => prev.map(c => c.id === selectedId ? { ...c, doorStyle: s.key } : c))}
+                            className={`flex flex-col items-center gap-1 px-1 py-2 rounded-xl border text-[10px] transition ${(selectedCab.doorStyle ?? "classic") === s.key ? "border-primary bg-primary/8 text-primary" : "border-slate-200 text-slate-600"}`}>
+                            <div className="w-8 h-8 rounded border border-slate-200 flex items-center justify-center overflow-hidden" style={{ background: selectedCab.colorHex }}>
+                              {s.key === "classic" && <svg width="20" height="24" viewBox="0 0 20 24" fill="none"><rect x="1" y="1" width="18" height="22" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.12)" strokeWidth="0.8"/><rect x="2.5" y="2.5" width="15" height="8" rx="0.5" fill="rgba(255,255,255,0.14)" stroke="rgba(0,0,0,0.08)" strokeWidth="0.5"/><rect x="2.5" y="13" width="15" height="8" rx="0.5" fill="rgba(255,255,255,0.14)" stroke="rgba(0,0,0,0.08)" strokeWidth="0.5"/></svg>}
+                              {s.key === "flat" && <svg width="20" height="24" viewBox="0 0 20 24" fill="none"><rect x="1" y="1" width="18" height="22" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.12)" strokeWidth="0.8"/><rect x="8" y="10" width="4" height="4" rx="2" fill="rgba(0,0,0,0.15)"/></svg>}
+                              {s.key === "shaker" && <svg width="20" height="24" viewBox="0 0 20 24" fill="none"><rect x="1" y="1" width="18" height="22" rx="1" fill={selectedCab.colorHex} stroke="rgba(0,0,0,0.12)" strokeWidth="0.8"/><rect x="2.5" y="2.5" width="15" height="19" rx="0.5" fill="rgba(255,255,255,0.08)" stroke="rgba(0,0,0,0.12)" strokeWidth="1.2"/><rect x="8" y="10" width="4" height="4" rx="2" fill="rgba(0,0,0,0.15)"/></svg>}
+                            </div>
+                            <span>{s.label}</span>
+                            <span className="text-[8px] text-slate-400">{s.desc}</span>
+                          </button>
                         ))}
-                        className="text-[10px] bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-600 flex-shrink-0"
-                      >
-                        <option value="shelf">Raf</option>
-                        <option value="drawer">Çekmece</option>
-                        <option value="hanger">Askılık</option>
-                        <option value="open">Açık</option>
-                      </select>
-                      <input
-                        type="number" min={10} max={250}
-                        value={sec.heightCm}
-                        onChange={e => {
-                          const v = Math.max(10, Math.min(250, parseInt(e.target.value) || 10));
-                          setCabinets(prev => prev.map(c => c.id === selectedId
-                            ? { ...c, customSections: (c.customSections ?? []).map(s =>
-                                s.id === sec.id ? { ...s, heightCm: v } : s
-                              )}
-                            : c
-                          ));
-                        }}
-                        className="w-12 text-[10px] text-center bg-white border border-slate-200 rounded px-1 py-0.5 font-semibold"
-                      />
-                      <span className="text-[9px] text-slate-400">cm</span>
-                      <button
-                        onClick={() => setCabinets(prev => prev.map(c => c.id === selectedId
-                          ? { ...c, customSections: (c.customSections ?? []).filter(s => s.id !== sec.id) }
-                          : c
-                        ))}
-                        className="ml-auto text-slate-200 hover:text-red-400 text-xs"
-                      >✕</button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-                {/* Bölüm ekle */}
-                <div className="flex flex-wrap gap-1">
-                  {([
-                    { type: "shelf" as const,   label: "+ Raf",      h: 35  },
-                    { type: "drawer" as const,  label: "+ Çekmece",  h: 20  },
-                    { type: "hanger" as const,  label: "+ Askılık",  h: 115 },
-                    { type: "open" as const,    label: "+ Açık",     h: 45  },
-                  ]).map(({ type, label, h }) => (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        const newSec: CustomSection = { id: Date.now(), type, heightCm: h };
-                        setCabinets(prev => prev.map(c => c.id === selectedId
-                          ? { ...c, customSections: [...(c.customSections ?? []), newSec] }
-                          : c
-                        ));
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:border-primary/40 hover:bg-primary/5 text-[10px] text-slate-500 hover:text-primary transition"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500 mb-2">Kaplama Türü</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(Object.entries(MATERIALS) as [MaterialType, MaterialDef][]).map(([key, mat]) => (
-                    <button
-                      key={key}
-                      onClick={() => updateSelectedMaterial(key)}
-                      className={`flex flex-col items-center gap-1 px-1 py-2 rounded-xl border text-[10px] font-medium transition ${
-                        selectedCab.material === key
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-slate-200 hover:border-slate-300 text-slate-600"
-                      }`}
-                    >
-                      {/* Kaplama önizlemesi: MDF düz, Lake %10 highlight, Akrilik %30 yansıma */}
-                      <div
-                        className="w-7 h-7 rounded-lg border border-slate-200 shadow-sm"
-                        style={{
-                          background:
-                            key === "akrilik"
+                  )}
+                  {/* Kaplama */}
+                  <div>
+                    <div className="text-[10px] font-medium text-slate-500 mb-1.5">Kaplama</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(Object.entries(MATERIALS) as [MaterialType, MaterialDef][]).map(([key, mat]) => (
+                        <button key={key} onClick={() => updateSelectedMaterial(key)}
+                          className={`flex flex-col items-center gap-1 px-1 py-2 rounded-xl border text-[10px] transition ${selectedCab.material === key ? "border-primary bg-primary/8 text-primary" : "border-slate-200 text-slate-600"}`}>
+                          <div className="w-7 h-7 rounded-lg border border-slate-200 shadow-sm" style={{
+                            background: key === "akrilik"
                               ? `linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 30%, ${selectedCab.colorHex} 70%)`
                               : key === "lake"
                               ? `linear-gradient(135deg, rgba(255,255,255,0.1) 0%, ${selectedCab.colorHex} 100%)`
                               : selectedCab.colorHex
-                        }}
-                      />
-                      <span>{mat.label}</span>
-                      <span className="text-[9px] text-slate-400">{mat.pricePerM2}₺/m²</span>
-                    </button>
-                  ))}
+                          }} />
+                          <span>{mat.label}</span>
+                          <span className="text-[8px] text-slate-400">{mat.pricePerM2}₺/m²</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Renk */}
+                  <div>
+                    <div className="text-[10px] font-medium text-slate-500 mb-1.5">Renk</div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {COLOR_PALETTES[selectedCab.material].map(({ label, hex }) => (
+                        <button key={hex} onClick={() => updateSelectedColor(hex)} title={label}
+                          className={`w-7 h-7 rounded-full border-2 transition hover:scale-110 ${selectedCab.colorHex === hex ? "border-primary scale-110" : "border-transparent"}`}
+                          style={{ background: hex }} />
+                      ))}
+                    </div>
+                  </div>
+                  {/* Maliyet */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500">Bu dolap tahmini maliyet</span>
+                    <span className="text-sm font-bold text-slate-800">
+                      {cabinetCost(selectedCab, room.height).toLocaleString("tr-TR")} ₺
+                    </span>
+                  </div>
                 </div>
-              </div>
-
-              {/* Renk Paleti */}
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500 mb-2">
-                  Renk
-                  <span className="ml-1 font-normal text-slate-400">
-                    — {MATERIALS[selectedCab.material].textureHint}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {COLOR_PALETTES[selectedCab.material].map(({ label, hex }) => (
-                    <button
-                      key={hex}
-                      title={label}
-                      onClick={() => updateSelectedColor(hex)}
-                      className={`w-7 h-7 rounded-lg border-2 transition shadow-sm ${
-                        selectedCab.colorHex === hex
-                          ? "border-primary scale-110"
-                          : "border-transparent hover:border-slate-300"
-                      }`}
-                      style={{ background: hex }}
-                    />
-                  ))}
-                  {/* Özel renk seçici */}
-                  <label
-                    title="Özel renk"
-                    className="w-7 h-7 rounded-lg border-2 border-dashed border-slate-300 cursor-pointer flex items-center justify-center text-slate-400 text-xs hover:border-primary transition relative overflow-hidden"
-                  >
-                    <input
-                      type="color"
-                      value={selectedCab.colorHex}
-                      onChange={e => updateSelectedColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                    />
-                    +
-                  </label>
-                </div>
-              </div>
-
-              {/* Modül maliyet özeti */}
-              <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>Kaplama türü</span>
-                  <span>{MATERIALS[selectedCab.material].label}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Yüzey alanı</span>
-                  <span>{cabinetSurfaceM2(selectedCab, room.height).toFixed(2)} m²</span>
-                </div>
-                <div className="flex justify-between font-semibold text-slate-800 pt-1 border-t border-slate-200">
-                  <span>Bu modül ≈</span>
-                  <span>{cabinetCost(selectedCab, room.height).toLocaleString("tr-TR")} ₺</span>
-                </div>
-              </div>
+              )}
 
             </div>
           )}
