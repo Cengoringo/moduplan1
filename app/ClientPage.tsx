@@ -2672,7 +2672,10 @@ function ModuPlanApp() {
               </div>
             );
           })()}
-          <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden" style={{ background: "#EEF0F3" }}>
+          <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden" style={{ background: "#EEF0F3" }}
+            onPointerUp={() => setOrbitInteracting(false)}
+            onPointerLeave={() => setOrbitInteracting(false)}
+          >
             <Canvas
               shadows={{ type: "soft" as any }}
               camera={{ position: [3.5, 3.2, 3.5], fov: 42 }}
@@ -2863,17 +2866,17 @@ function ModuPlanApp() {
               <OrbitControls
                 makeDefault
                 enableZoom
-                enableRotate={!orbitInteracting && !placedProduct}
+                enableRotate={!orbitInteracting}
                 enablePan={!orbitInteracting && !placedProduct}
-                maxPolarAngle={Math.PI / 2.08}
-                minDistance={1.2}
-                maxDistance={12}
+                maxPolarAngle={Math.PI / 2.05}
+                minPolarAngle={0.1}
+                minDistance={0.8}
+                maxDistance={14}
                 enableDamping
-                dampingFactor={0.08}
-                rotateSpeed={0.7}
-                zoomSpeed={0.9}
-                panSpeed={0.8}
-                target={[0, roomHeightM * 0.35, 0]}
+                dampingFactor={0.06}
+                rotateSpeed={0.85}
+                zoomSpeed={1.0}
+                panSpeed={0.7}
               />
 
               {/* ── Ürün Dene — Tek mesh, tek düzlem, eksen panelden ── */}
@@ -3261,16 +3264,21 @@ function ModuPlanApp() {
                               {/* Yükseklik input */}
                               <input
                                 type="number" min={8} max={250}
-                                value={sec.heightCm}
-                                onChange={e => {
-                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || 8));
-                                  setCabinets(prev => prev.map(c => c.id === selectedId
+                                key={sec.id + '-' + sec.heightCm}
+                                defaultValue={sec.heightCm}
+                                onBlur={e => {
+                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || sec.heightCm));
+                                  if (v !== sec.heightCm) setCabinets(prev => prev.map(c => c.id === selectedId
                                     ? { ...c, customSections: (c.customSections ?? []).map(s =>
                                         s.id === sec.id ? { ...s, heightCm: v } : s
                                       )}
                                     : c
                                   ));
                                 }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                onChange={() => {}}
                                 className="w-10 text-[10px] text-center border border-slate-200 rounded px-0.5 py-0.5 font-semibold focus:outline-none focus:border-primary/50"
                                 style={{ color: col }}
                               />
@@ -3620,13 +3628,17 @@ function ModuPlanApp() {
                             <div key={sec.id} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg group hover:bg-slate-50">
                               <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: c }} />
                               <span className="flex-1 text-[10px] text-slate-600 truncate">{l}</span>
-                              <input type="number" min={8} max={250} value={sec.heightCm}
-                                onChange={e => {
-                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || 8));
-                                  setCabinets(prev => prev.map(cab => cab.id === selectedId
+                              <input type="number" min={8} max={250}
+                                key={sec.id + '-' + sec.heightCm}
+                                defaultValue={sec.heightCm}
+                                onBlur={e => {
+                                  const v = Math.max(8, Math.min(250, parseInt(e.target.value) || sec.heightCm));
+                                  if (v !== sec.heightCm) setCabinets(prev => prev.map(cab => cab.id === selectedId
                                     ? { ...cab, customSections: (cab.customSections ?? []).map(s => s.id === sec.id ? { ...s, heightCm: v } : s) }
                                     : cab));
                                 }}
+                                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                onChange={() => {}}
                                 className="w-10 text-[10px] text-center border border-slate-200 rounded px-0.5 py-0.5 font-semibold focus:outline-none"
                                 style={{ color: c }} />
                               <span className="text-[9px] text-slate-400">cm</span>
