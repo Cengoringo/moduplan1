@@ -252,14 +252,14 @@ function shadeColor(hex: string, amount: number): string {
 const MAT_OFFSET = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 };
 
 function CabinetMesh({
-  cab, room, selected,
+  cab, room, selected, moveMode,
   onChangePosition, onChangeWidthFactor, onChangeHeightFactor, onSelect,
   onInteractionStart, onInteractionEnd,
   dragMeasure, onWidthDragValue, onHeightDragValue, onWidthDragEnd, onHeightDragEnd,
   editingShelf, onShelfDoubleClick, onShelfHeightSubmit,
   onSectionResize, onChangeDepthFactor, onDepthDragValue, onDepthDragEnd
 }: {
-  cab: Cabinet; room: RoomSize; selected: boolean;
+  cab: Cabinet; room: RoomSize; selected: boolean; moveMode: boolean;
   onChangePosition: (id: number, x: number, z: number) => void;
   onChangeWidthFactor: (id: number, wf: number) => void;
   onChangeHeightFactor?: (id: number, hr: number) => void;
@@ -301,11 +301,16 @@ function CabinetMesh({
   };
 
   const handleBodyPD = (e: any) => {
-    e.stopPropagation(); onSelect(cab.id); onInteractionStart();
+    e.stopPropagation();
+    onSelect(cab.id);
+    // moveMode'da sürüklemeyle taşı
+    if (!moveMode) return;
+    onInteractionStart();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const handleBodyPM = (e: any) => {
     e.stopPropagation();
+    if (!moveMode) return;
     if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return;
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hit = new THREE.Vector3();
@@ -316,7 +321,7 @@ function CabinetMesh({
   const handleBodyPU = (e: any) => {
     e.stopPropagation();
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    onInteractionEnd();
+    if (moveMode) onInteractionEnd();
   };
   // Sadece seçme — hareket ettirme değil (alt kısım için)
   const handleSelectOnly = (e: any) => { e.stopPropagation(); onSelect(cab.id); };
@@ -509,16 +514,41 @@ function CabinetMesh({
         <boxGeometry args={[W, T, D]} />
         <meshPhysicalMaterial {...matP} />
       </mesh>
-      {/* Tavan — yükseklik sürükle */}
+      {/* Tavan — yükseklik sürükle (görünür panel) */}
       <mesh castShadow receiveShadow position={[0, H / 2 - T / 2, 0]} {...heightDragEvents}>
         <boxGeometry args={[W, T, D]} />
         <meshPhysicalMaterial {...matP} />
       </mesh>
-      {/* Üst sürükleme alanı (görünmez, %55 üstten) — dolabı taşımak için buraya tıkla */}
-      <mesh position={[0, H * 0.225, 0]} {...bodyEvents}>
-        <boxGeometry args={[W - T * 2.2, H * 0.45, D - T * 2]} />
+      {/* Tavan genişletilmiş hit area — daha kolay tutma */}
+      <mesh position={[0, H / 2 + 0.04, 0]} {...heightDragEvents}>
+        <boxGeometry args={[W, 0.1, D]} />
         <meshStandardMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
+      {/* ── Dolap gövdesi — tüm panel tıklanabilir (seçmek için) ── */}
+      <mesh position={[0, 0, 0]}
+        onPointerDown={(e: any) => { e.stopPropagation(); onSelect(cab.id); if(moveMode){ onInteractionStart(); (e.target as HTMLElement).setPointerCapture(e.pointerId); } }}
+        onPointerMove={(e: any) => { if(!moveMode) return; e.stopPropagation(); if(!(e.target as HTMLElement).hasPointerCapture(e.pointerId)) return; const pl=new THREE.Plane(new THREE.Vector3(0,1,0),0); const ht=new THREE.Vector3(); e.ray.intersectPlane(pl,ht); const s=snapToWalls(ht.x,ht.z,room,W,D); onChangePosition(cab.id,s.x,s.z); }}
+        onPointerUp={(e: any) => { (e.target as HTMLElement).releasePointerCapture(e.pointerId); if(moveMode) onInteractionEnd(); }}
+      >
+        <boxGeometry args={[W, H, D]} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      {/* ── Taşıma modu ikonu — ortada büyük el ikonu ── */}
+      {selected && moveMode && (
+        <Html position={[0, 0, D / 2 + 0.01]} center distanceFactor={3} style={{ pointerEvents: "none" }}>
+          <div style={{
+            background: "rgba(16,185,129,0.95)", borderRadius: "50%",
+            width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 3px 12px rgba(16,185,129,0.4)",
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round">
+              <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M12 12v.01"/>
+              <path d="M12 3v3m0 12v3M3 12h3m12 0h3"/>
+            </svg>
+          </div>
+        </Html>
+      )}
 
       {/* ── Yükseklik sürükleme ikonu ── */}
       {selected && (
@@ -543,10 +573,15 @@ function CabinetMesh({
         <boxGeometry args={[T, H - T * 2, D]} />
         <meshPhysicalMaterial {...matP} />
       </mesh>
-      {/* Sağ yan — genişlik sürükle */}
+      {/* Sağ yan — genişlik sürükle (görünür panel) */}
       <mesh castShadow receiveShadow position={[W / 2 - T / 2, 0, 0]} {...widthDragEvents}>
         <boxGeometry args={[T, H - T * 2, D]} />
         <meshPhysicalMaterial {...matP} />
+      </mesh>
+      {/* Sağ yan genişletilmiş hit area — daha kolay tutma */}
+      <mesh position={[W / 2 + 0.04, 0, 0]} {...widthDragEvents}>
+        <boxGeometry args={[0.1, H, D]} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {/* ── Genişlik sürükleme ikonu ── */}
@@ -1533,6 +1568,7 @@ function ModuPlanApp() {
   const [room, setRoom]         = useState<RoomSize>({ width: 400, depth: 400, height: 260 });
   const [cabinets, setCabinets] = useState<Cabinet[]>([{ ...createCabinet(1, "drawerWardrobe"), x: -1 }]);
   const [selectedId, setSelectedId] = useState<number | null>(1);
+  const [moveMode, setMoveMode] = useState(false); // Taşıma modu aktif mi
   const exportGroupRef = useRef<THREE.Group | null>(null);
   const [glbUrl, setGlbUrl]       = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1574,6 +1610,44 @@ function ModuPlanApp() {
       setSavedLayouts([]);
     }
   }, []);
+
+  // ── Klavye kısayolları ────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Input/textarea odaklanmışsa atla
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "m" || e.key === "M") {
+        setMoveMode(m => !m);
+        return;
+      }
+      if (e.key === "Escape") {
+        setMoveMode(false);
+        return;
+      }
+      // Ok tuşları ile seçili dolabı ızgara adımında taşı
+      if (!selectedId) return;
+      const STEP = 0.05; // metre (5 cm)
+      let dx = 0, dz = 0;
+      if (e.key === "ArrowLeft")  { dx = -STEP; e.preventDefault(); }
+      if (e.key === "ArrowRight") { dx =  STEP; e.preventDefault(); }
+      if (e.key === "ArrowUp")    { dz = -STEP; e.preventDefault(); }
+      if (e.key === "ArrowDown")  { dz =  STEP; e.preventDefault(); }
+      if (dx !== 0 || dz !== 0) {
+        setCabinets(prev => prev.map(c => {
+          if (c.id !== selectedId) return c;
+          const hCm = room.height * c.heightRatio;
+          const wM = hCm * c.widthFactor * CM_TO_M;
+          const dM = hCm * c.depthFactor * CM_TO_M;
+          const s = snapToWalls(c.x + dx, c.z + dz, room, wM, dM);
+          return { ...c, x: s.x, z: s.z };
+        }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, room, setCabinets]);
 
   const persistSavedLayouts = (list: SavedLayout[]) => {
     setSavedLayouts(list);
@@ -2596,13 +2670,22 @@ function ModuPlanApp() {
                   <span className="text-[11px] text-slate-600">Dolaba <strong>tıkla</strong> → seç → kenarlardan boyutunu ayarla</span>
                 </div>
               )}
-              {selectedId && !placedProduct && (
+              {selectedId && !placedProduct && !moveMode && (
                 <div className="flex items-center gap-2">
                   <svg width="14" height="14" fill="none" stroke="#10B981" strokeWidth="2" viewBox="0 0 24 24" className="flex-shrink-0"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
                   <span className="text-[11px] text-slate-600">
-                    <strong>↔ Sağ kenar</strong> genişlik &nbsp;·&nbsp;
-                    <strong>↕ Üst kenar</strong> yükseklik &nbsp;·&nbsp;
-                    <strong className="text-emerald-600">◆ Ön yüzey</strong> derinlik
+                    <strong className="text-blue-600">↔ Sağ kenar</strong> genişlik &nbsp;·&nbsp;
+                    <strong className="text-blue-600">↕ Üst kenar</strong> yükseklik &nbsp;·&nbsp;
+                    <strong className="text-emerald-600">◆ Ön yüz</strong> derinlik &nbsp;·&nbsp;
+                    <strong className="text-slate-500">Taşı</strong> butonu ile yer değiştir
+                  </span>
+                </div>
+              )}
+              {selectedId && moveMode && (
+                <div className="flex items-center gap-2">
+                  <svg width="14" height="14" fill="none" stroke="#10B981" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24" className="flex-shrink-0"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/><path d="M12 3v18M3 12h18"/></svg>
+                  <span className="text-[11px] text-emerald-700 font-medium">
+                    Dolabı sürükle taşı — bitince <strong>Taşı</strong> butonuna tekrar bas
                   </span>
                 </div>
               )}
@@ -2630,14 +2713,29 @@ function ModuPlanApp() {
                 Oda Planı
               </button>
               {selectedId && (
-                <button onClick={() => {
-                  const hr = Math.min(0.98, (room.height-5)/room.height);
-                  addCabinet("custom");
-                }}
-                  className="bg-primary/90 backdrop-blur rounded-xl px-3 py-2 shadow-sm text-[11px] text-white hover:bg-primary transition flex items-center gap-1.5">
-                  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Yeni Dolap
-                </button>
+                <>
+                  {/* Taşıma modu toggle */}
+                  <button
+                    onClick={() => setMoveMode(m => !m)}
+                    className={`backdrop-blur rounded-xl px-3 py-2 shadow-sm text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                      moveMode
+                        ? "bg-emerald-500 text-white shadow-emerald-200 border border-emerald-400"
+                        : "bg-white/90 border border-slate-100 text-slate-600 hover:border-emerald-300 hover:text-emerald-600"
+                    }`}
+                    title="Dolabı sürükleyerek taşı (M)"
+                  >
+                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24">
+                      <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/>
+                      <path d="M12 3v18M3 12h18"/>
+                    </svg>
+                    {moveMode ? "Taşınıyor…" : "Taşı"}
+                  </button>
+                  <button onClick={() => addCabinet("custom")}
+                    className="bg-primary/90 backdrop-blur rounded-xl px-3 py-2 shadow-sm text-[11px] text-white hover:bg-primary transition flex items-center gap-1.5">
+                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Yeni Dolap
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -2649,19 +2747,27 @@ function ModuPlanApp() {
             const wCm = Math.round(hCm * cab.widthFactor);
             const dCm = Math.round(hCm * cab.depthFactor);
             return (
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-                <div className="bg-slate-900/80 backdrop-blur rounded-xl px-4 py-2 shadow-lg flex items-center gap-4">
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
+                <div className={`backdrop-blur rounded-xl px-4 py-2 shadow-lg flex items-center gap-3 transition-all ${moveMode ? "bg-emerald-900/85 border border-emerald-500/40" : "bg-slate-900/80"}`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <div className={`w-2 h-2 rounded-full ${moveMode ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
                     <span className="text-white text-[11px] font-semibold">Dolap #{cab.id}</span>
                   </div>
-                  <div className="flex gap-3 text-[10px]">
+                  <div className="flex gap-2.5 text-[10px]">
                     <span className="text-blue-300">G: <strong>{wCm} cm</strong></span>
                     <span className="text-blue-300">Y: <strong>{hCm} cm</strong></span>
                     <span className="text-emerald-300">D: <strong>{dCm} cm</strong></span>
                   </div>
+                  {/* Ok tuşu ipucu */}
+                  <div className="flex items-center gap-1 pl-2 border-l border-white/20">
+                    {moveMode ? (
+                      <span className="text-emerald-300 text-[10px]">Sürükle veya ← ↑ ↓ → ile taşı</span>
+                    ) : (
+                      <span className="text-slate-400 text-[10px]">← ↑ ↓ → ile finetle &nbsp;·&nbsp; <span className="text-slate-300 font-mono">M</span> taşıma modu</span>
+                    )}
+                  </div>
                   {cab.customSections && cab.customSections.length > 0 && (
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 pl-2 border-l border-white/20">
                       {cab.customSections.map(s => {
                         const dots: Record<string, string> = { shelf:"#60A5FA", drawer:"#FBBF24", "deep-drawer":"#FB923C", hanger:"#4ADE80", "jewelry-drawer":"#E879F9", "shoe-rack":"#818CF8", open:"#94A3B8" };
                         return <div key={s.id} className="w-1.5 h-3 rounded-sm" style={{ background: dots[s.type] ?? "#94a3b8" }} title={s.type} />;
@@ -2830,11 +2936,12 @@ function ModuPlanApp() {
                     cab={cab}
                     room={room}
                     selected={cab.id === selectedId}
+                    moveMode={moveMode && cab.id === selectedId}
                     onChangePosition={updateCabinetPosition}
                     onChangeWidthFactor={updateCabinetWidthFactor}
                     onChangeHeightFactor={updateCabinetHeightFactor}
                     onChangeDepthFactor={updateCabinetDepthFactor}
-                    onSelect={setSelectedId}
+                    onSelect={(id) => { setSelectedId(id); setMoveMode(false); }}
                     onInteractionStart={() => setOrbitInteracting(true)}
                     onInteractionEnd={() => setOrbitInteracting(false)}
                     dragMeasure={dragMeasure?.cabId === cab.id ? { value: dragMeasure.value, type: dragMeasure.type } : null}
