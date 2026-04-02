@@ -3,7 +3,7 @@
 /// <reference types="@react-three/fiber" />
 import React, { useRef, useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, OrbitControls, Html } from "@react-three/drei";
+import { Grid, OrbitControls, Html, ContactShadows, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import { exportObjectToGLB } from "../lib/export-glb";
 
@@ -23,8 +23,9 @@ type MaterialType = "mdflam" | "lake" | "akrilik";
 
 type CustomSection = {
   id: number;
-  type: "shelf" | "drawer" | "deep-drawer" | "hanger" | "jewelry-drawer" | "shoe-rack" | "open";
+  type: "shelf" | "drawer" | "deep-drawer" | "hanger" | "jewelry-drawer" | "shoe-rack" | "open" | "vertical";
   heightCm: number;
+  widthRatio?: number; // vertical bölme için: sol taraf oranı (0-1), sağ = 1 - widthRatio
 };
 
 type Cabinet = {
@@ -64,6 +65,9 @@ type MaterialDef = {
   metalness: number;
   roughness: number;
   envMapIntensity?: number;
+  clearcoat?: number;       // Lake için clearcoat
+  clearcoatRoughness?: number;
+  sheen?: number;           // Akrilik için sheen
   textureHint: string;
 };
 
@@ -73,24 +77,30 @@ const MATERIALS: Record<MaterialType, MaterialDef> = {
     description: "Mat laminat kaplama",
     pricePerM2: 480,
     metalness: 0.0,
-    roughness: 0.9,
+    roughness: 0.82,         // Hafif dokulu mat
+    envMapIntensity: 0.3,    // Çok az ortam yansıması
     textureHint: "Tam mat"
   },
   lake: {
     label: "Lake",
     description: "Yarı parlak boya",
     pricePerM2: 720,
-    metalness: 0.05,
-    roughness: 0.45,
-    textureHint: "Yarı parlak"
+    metalness: 0.0,
+    roughness: 0.18,         // Soft matte — düşük roughness
+    envMapIntensity: 1.2,    // Orta yansıma
+    clearcoat: 0.8,          // Vernikleme efekti
+    clearcoatRoughness: 0.12,
+    textureHint: "Soft matte"
   },
   akrilik: {
     label: "Akrilik",
     description: "Yüksek parlaklık",
     pricePerM2: 980,
-    metalness: 0.15,
-    roughness: 0.05,
-    envMapIntensity: 1.5,
+    metalness: 0.05,
+    roughness: 0.02,         // Neredeyse ayna
+    envMapIntensity: 2.2,    // Güçlü yansıma
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.02,
     textureHint: "Ayna parlak"
   }
 };
@@ -281,7 +291,14 @@ function CabinetMesh({
   const mat = MATERIALS[cab.material];
   const color = cab.colorHex;
   const innerColor = shadeColor(color, -20);
-  const matBase = { ...MAT_OFFSET, metalness: mat.metalness, roughness: mat.roughness, envMapIntensity: mat.envMapIntensity ?? 1 };
+  const matBase = {
+    ...MAT_OFFSET,
+    metalness: mat.metalness,
+    roughness: mat.roughness,
+    envMapIntensity: mat.envMapIntensity ?? 0.8,
+    // MeshPhysicalMaterial clearcoat için (Lake + Akrilik)
+    ...(mat.clearcoat ? { clearcoat: mat.clearcoat, clearcoatRoughness: mat.clearcoatRoughness ?? 0.1 } : {}),
+  };
 
   const handleBodyPD = (e: any) => {
     e.stopPropagation(); onSelect(cab.id); onInteractionStart();
@@ -301,7 +318,10 @@ function CabinetMesh({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     onInteractionEnd();
   };
-  const bodyEvents = { onPointerDown: handleBodyPD, onPointerMove: handleBodyPM, onPointerUp: handleBodyPU };
+  // Sadece seçme — hareket ettirme değil (alt kısım için)
+  const handleSelectOnly = (e: any) => { e.stopPropagation(); onSelect(cab.id); };
+  const bodyEvents     = { onPointerDown: handleBodyPD,   onPointerMove: handleBodyPM, onPointerUp: handleBodyPU };
+  const selectOnlyEvts = { onPointerDown: handleSelectOnly };
 
   const handleWidthPD = (e: any) => {
     e.stopPropagation(); onSelect(cab.id); onInteractionStart();
@@ -379,7 +399,7 @@ function CabinetMesh({
   };
   const depthDragEvents = { onPointerDown: handleDepthPD, onPointerMove: handleDepthPM, onPointerUp: handleDepthPU };
 
-  const matP = { ...matBase, color, emissive: selected ? "#ffffff" : "#000000", emissiveIntensity: selected ? 0.05 : 0 };
+  const matP = { ...matBase, color };
   const matInner = { ...matBase, color: innerColor, roughness: mat.roughness + 0.1 };
   const matMetal = { ...MAT_OFFSET, color: "#9CA3AF", metalness: 0.85, roughness: 0.15 };
   const matHandle = { ...MAT_OFFSET, color: "#6B7280", metalness: 0.75, roughness: 0.25 };
@@ -484,15 +504,20 @@ function CabinetMesh({
     <group position={[cab.x, H / 2, cab.z]} rotation={[0, cab.rotation, 0]}>
 
       {/* ── 5 Gövde Paneli ──────────────────────────────────────────────── */}
-      {/* Taban */}
-      <mesh castShadow receiveShadow position={[0, -H / 2 + T / 2, 0]} {...bodyEvents}>
+      {/* Taban — sadece seç */}
+      <mesh castShadow receiveShadow position={[0, -H / 2 + T / 2, 0]} {...selectOnlyEvts}>
         <boxGeometry args={[W, T, D]} />
-        <meshStandardMaterial {...matP} {...MAT_OFFSET} />
+        <meshPhysicalMaterial {...matP} />
       </mesh>
       {/* Tavan — yükseklik sürükle */}
       <mesh castShadow receiveShadow position={[0, H / 2 - T / 2, 0]} {...heightDragEvents}>
         <boxGeometry args={[W, T, D]} />
-        <meshStandardMaterial {...matP} {...MAT_OFFSET} />
+        <meshPhysicalMaterial {...matP} />
+      </mesh>
+      {/* Üst sürükleme alanı (görünmez, %55 üstten) — dolabı taşımak için buraya tıkla */}
+      <mesh position={[0, H * 0.225, 0]} {...bodyEvents}>
+        <boxGeometry args={[W - T * 2.2, H * 0.45, D - T * 2]} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {/* ── Yükseklik sürükleme ikonu ── */}
@@ -513,15 +538,15 @@ function CabinetMesh({
           </div>
         </Html>
       )}
-      {/* Sol yan */}
-      <mesh castShadow receiveShadow position={[-W / 2 + T / 2, 0, 0]} {...bodyEvents}>
+      {/* Sol yan — sadece seç */}
+      <mesh castShadow receiveShadow position={[-W / 2 + T / 2, 0, 0]} {...selectOnlyEvts}>
         <boxGeometry args={[T, H - T * 2, D]} />
-        <meshStandardMaterial {...matP} {...MAT_OFFSET} />
+        <meshPhysicalMaterial {...matP} />
       </mesh>
       {/* Sağ yan — genişlik sürükle */}
       <mesh castShadow receiveShadow position={[W / 2 - T / 2, 0, 0]} {...widthDragEvents}>
         <boxGeometry args={[T, H - T * 2, D]} />
-        <meshStandardMaterial {...matP} {...MAT_OFFSET} />
+        <meshPhysicalMaterial {...matP} />
       </mesh>
 
       {/* ── Genişlik sürükleme ikonu ── */}
@@ -543,14 +568,40 @@ function CabinetMesh({
         </Html>
       )}
       {/* Arka panel */}
-      <mesh castShadow position={[0, 0, -D / 2 + T * 0.4]} {...bodyEvents}>
+      <mesh castShadow position={[0, 0, -D / 2 + T * 0.4]} {...selectOnlyEvts}>
         <boxGeometry args={[W - T * 2, H - T * 2, T * 0.5]} />
-        <meshStandardMaterial {...matInner} {...MAT_OFFSET} />
+        <meshPhysicalMaterial {...matInner} roughness={mat.roughness + 0.18} />
       </mesh>
-      {/* Ön sürükleme paneli — derinlik ayarı */}
+
+      {/* ── Bevel highlight şeritleri — köşelerde ışık tutma efekti ── */}
+      {[
+        // Üst ön kenar
+        { pos: [0, H/2, D/2] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [W, 0.006, 0.006] as [number,number,number] },
+        // Alt ön kenar
+        { pos: [0, -H/2, D/2] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [W, 0.006, 0.006] as [number,number,number] },
+        // Sol ön kenar
+        { pos: [-W/2, 0, D/2] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [0.006, H, 0.006] as [number,number,number] },
+        // Sağ ön kenar
+        { pos: [W/2, 0, D/2] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [0.006, H, 0.006] as [number,number,number] },
+        // Üst sol dikey kenar
+        { pos: [-W/2, H/2, 0] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [0.005, 0.005, D] as [number,number,number] },
+        // Üst sağ dikey kenar
+        { pos: [W/2, H/2, 0] as [number,number,number], rot: [0,0,0] as [number,number,number], args: [0.005, 0.005, D] as [number,number,number] },
+      ].map((e, idx) => (
+        <mesh key={`bv${idx}`} position={e.pos}>
+          <boxGeometry args={e.args} />
+          <meshStandardMaterial
+            color={shadeColor(color, +28)}
+            roughness={Math.max(0.05, mat.roughness - 0.35)}
+            metalness={mat.metalness + 0.08}
+            {...MAT_OFFSET}
+          />
+        </mesh>
+      ))}
+      {/* Ön sürükleme paneli — derinlik ayarı (her zaman görünmez, sadece interaction için) */}
       <mesh castShadow receiveShadow position={[0, 0, D / 2 - T / 2]} {...depthDragEvents}>
         <boxGeometry args={[W - T * 2, H - T * 2, T]} />
-        <meshStandardMaterial {...matP} {...MAT_OFFSET} transparent opacity={cab.hasDoor ? 0 : 1} />
+        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
       {/* ── Derinlik sürükleme ikonu ── */}
       {selected && !cab.hasDoor && (
@@ -846,7 +897,7 @@ function CabinetMesh({
         </group>
       )}
 
-      {/* ── Özel modül bölümleri — tüm variant'larda çalışır ──────────────── */}
+      {/* ── Özel modül bölümleri — gerçekçi derinlik + net depolama alanları ── */}
       {cab.customSections && cab.customSections.length > 0 && (() => {
         const sections = cab.customSections!;
         const totalCm = sections.reduce((s, sec) => s + sec.heightCm, 0);
@@ -855,27 +906,60 @@ function CabinetMesh({
         const elements: React.ReactNode[] = [];
         let curY = H / 2 - T; // top, counting down
 
+        // İç alan renkleri — her bölüm tipi için farklı tonu
+        const secBgColors: Record<string, string> = {
+          shelf: shadeColor(color, -8),
+          drawer: shadeColor(color, -5),
+          "deep-drawer": shadeColor(color, -10),
+          hanger: shadeColor(color, -3),
+          "jewelry-drawer": shadeColor(color, -4),
+          "shoe-rack": shadeColor(color, -6),
+          open: shadeColor(color, -2),
+        };
+
         sections.forEach((sec, i) => {
           const secH = sec.heightCm * CM_TO_M * scale;
           const secCenterY = curY - secH / 2;
           const botY = curY - secH;
+          const innerW = W - T * 2;
+          const innerD = D - T * 2;
+          const bgColor = secBgColors[sec.type] ?? innerColor;
 
-          // Bölme çizgisi (alta) — sürüklenebilir
+          // ── Bölüm arka zemin — derinliği hissettir ──
+          elements.push(
+            <mesh key={`bg${i}`} position={[0, secCenterY, -innerD * 0.1]}>
+              <boxGeometry args={[innerW, secH - T * 0.5, T * 0.3]} />
+              <meshStandardMaterial color={bgColor} roughness={mat.roughness + 0.15} metalness={0} {...MAT_OFFSET} />
+            </mesh>
+          );
+
+          // ── Bölüm yan gölge şeritleri — derinlik algısı ──
+          elements.push(
+            <mesh key={`ls${i}`} position={[-innerW / 2 + 0.008, secCenterY, 0]}>
+              <boxGeometry args={[0.006, secH * 0.85, innerD * 0.6]} />
+              <meshStandardMaterial color={shadeColor(color, -25)} roughness={0.95} metalness={0} {...MAT_OFFSET} />
+            </mesh>
+          );
+          elements.push(
+            <mesh key={`rs${i}`} position={[innerW / 2 - 0.008, secCenterY, 0]}>
+              <boxGeometry args={[0.006, secH * 0.85, innerD * 0.6]} />
+              <meshStandardMaterial color={shadeColor(color, -25)} roughness={0.95} metalness={0} {...MAT_OFFSET} />
+            </mesh>
+          );
+
+          // ── Bölme çizgisi (alta) — sürüklenebilir ──
           if (i < sections.length - 1) {
-            const divIdx = i; // closure için
+            const divIdx = i;
             elements.push(
               <group key={`cdiv${i}`}>
-                {/* Görsel panel */}
                 <mesh castShadow position={[0, botY, 0]}>
-                  <boxGeometry args={[W - T * 2, T, D - T * 1.5]} />
-                  <meshStandardMaterial color={color} metalness={mat.metalness} roughness={mat.roughness} />
+                  <boxGeometry args={[innerW, T, innerD]} />
+                  <meshStandardMaterial color={color} metalness={mat.metalness} roughness={mat.roughness} {...MAT_OFFSET} />
                 </mesh>
-                {/* Sürükleme tutamaç alanı — daha geniş hit area */}
-                <mesh
-                  position={[0, botY, D / 2 + 0.005]}
+                {/* Sürükleme alanı */}
+                <mesh position={[0, botY, D / 2 + 0.005]}
                   onPointerDown={(e: any) => {
-                    e.stopPropagation();
-                    onInteractionStart();
+                    e.stopPropagation(); onInteractionStart();
                     (e.target as HTMLElement).setPointerCapture(e.pointerId);
                   }}
                   onPointerMove={(e: any) => {
@@ -884,125 +968,299 @@ function CabinetMesh({
                     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(cab.z + D / 2));
                     const hit = new THREE.Vector3();
                     e.ray.intersectPlane(plane, hit);
-                    const newBotAbsY = hit.y; // world Y
-                    const topAbsY = H / 2 - T; // top of sections area (world relative)
-                    const fromTop = (topAbsY - newBotAbsY); // distance from top
-                    const newTopH = Math.max(8, Math.round(fromTop / CM_TO_M / scale - sections.slice(0, divIdx).reduce((s, x) => s + x.heightCm, 0)));
+                    const topAbsY = H / 2 - T;
+                    const fromTop = topAbsY - hit.y;
+                    const cumAboveCm = sections.slice(0, divIdx).reduce((s, x) => s + x.heightCm, 0);
+                    const newTopH = Math.max(8, Math.round(fromTop / CM_TO_M / scale - cumAboveCm));
                     const delta = newTopH - sections[divIdx].heightCm;
                     const nextH = Math.max(8, sections[divIdx + 1].heightCm - delta);
-                    if (newTopH >= 8 && nextH >= 8) {
-                      onSectionResize?.(cab.id, divIdx, newTopH, nextH);
-                    }
+                    if (newTopH >= 8 && nextH >= 8) onSectionResize?.(cab.id, divIdx, newTopH, nextH);
                   }}
                   onPointerUp={(e: any) => {
                     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
                     onInteractionEnd();
                   }}
                 >
-                  <boxGeometry args={[W - T * 2, 0.022, 0.018]} />
-                  <meshStandardMaterial color="#60A5FA" transparent opacity={0} />
+                  <boxGeometry args={[innerW, 0.022, 0.018]} />
+                  <meshStandardMaterial transparent opacity={0} />
                 </mesh>
-                {/* Görsel sürükleme ipucu — hover/seçili dolap */}
                 {selected && (
-                  <Html position={[-W / 2 - 0.04, botY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
-                    <div style={{ fontSize: 8, color: "#60A5FA", fontFamily: "system-ui", userSelect: "none" }}>↕</div>
+                  <Html position={[-W / 2 - 0.05, botY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                    <div style={{ fontSize: 9, color: "#60A5FA", userSelect: "none", fontWeight: 700 }}>↕</div>
                   </Html>
                 )}
               </group>
             );
           }
 
-          // Bölüm içeriği
+          // ── Bölüm içeriği ──────────────────────────────────────
           if (sec.type === "drawer" || sec.type === "deep-drawer") {
-            // Çekmece yüzeyi + tutamaç
-            const drawerColor = sec.type === "deep-drawer" ? shadeColor(color, -8) : shadeColor(color, +5);
+            const drawerFaceColor = sec.type === "deep-drawer" ? shadeColor(color, -10) : shadeColor(color, +8);
+            // Çekmece gövdesi — derinlik çekmeceyi göster
             elements.push(
               <group key={`csec${i}`}>
                 {/* Çekmece yüzü */}
-                <mesh castShadow position={[0, secCenterY, D / 2 + 0.009]}>
-                  <boxGeometry args={[W - T * 2.2, secH - 0.008, 0.016]} />
-                  <meshStandardMaterial color={drawerColor} metalness={mat.metalness + 0.03} roughness={mat.roughness - 0.05} {...MAT_OFFSET} />
+                <mesh castShadow position={[0, secCenterY, D / 2 - T * 0.5]}>
+                  <boxGeometry args={[innerW - 0.006, secH - T * 1.2, T * 1.6]} />
+                  <meshStandardMaterial color={drawerFaceColor} metalness={mat.metalness + 0.04} roughness={mat.roughness - 0.06} {...MAT_OFFSET} />
                 </mesh>
-                {/* Yatay tutamaç */}
-                <mesh position={[0, secCenterY, D / 2 + 0.021]}>
-                  <boxGeometry args={[W * 0.35, 0.010, 0.010]} />
-                  <meshStandardMaterial color="#9CA3AF" metalness={0.88} roughness={0.12} {...MAT_OFFSET} />
+                {/* Çekmece iç kutu (derinlik göstergesi) */}
+                <mesh position={[0, secCenterY - secH * 0.08, -innerD * 0.3]}>
+                  <boxGeometry args={[innerW - 0.03, T * 0.5, innerD * 0.55]} />
+                  <meshStandardMaterial color={shadeColor(color, -30)} roughness={0.95} metalness={0} />
                 </mesh>
-                <mesh position={[-W * 0.16, secCenterY - 0.018, D / 2 + 0.017]}>
-                  <boxGeometry args={[0.009, 0.022, 0.009]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} {...MAT_OFFSET} />
+                {/* Yatay tutamaç çubuğu */}
+                <mesh position={[0, secCenterY, D / 2 + 0.018]}>
+                  <boxGeometry args={[W * 0.4, 0.010, 0.010]} />
+                  <meshStandardMaterial color="#B0B8C0" metalness={0.9} roughness={0.1} {...MAT_OFFSET} />
                 </mesh>
-                <mesh position={[W * 0.16, secCenterY - 0.018, D / 2 + 0.017]}>
-                  <boxGeometry args={[0.009, 0.022, 0.009]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.75} roughness={0.25} {...MAT_OFFSET} />
+                <mesh position={[-W * 0.18, secCenterY - 0.015, D / 2 + 0.014]}>
+                  <cylinderGeometry args={[0.007, 0.007, 0.012, 10]} />
+                  <meshStandardMaterial color="#9CA3AF" metalness={0.85} roughness={0.15} {...MAT_OFFSET} />
+                </mesh>
+                <mesh position={[W * 0.18, secCenterY - 0.015, D / 2 + 0.014]}>
+                  <cylinderGeometry args={[0.007, 0.007, 0.012, 10]} />
+                  <meshStandardMaterial color="#9CA3AF" metalness={0.85} roughness={0.15} {...MAT_OFFSET} />
+                </mesh>
+              </group>
+            );
+          } else if (sec.type === "shelf") {
+            // Raf — tam derinlik boyunca raf tahtası, orta yükseklikte
+            const shelfY = secCenterY; // Bölümün ortasında
+            elements.push(
+              <group key={`csec${i}`}>
+                {/* Raf tahtası — tam derinlik */}
+                <mesh castShadow position={[0, shelfY, 0]}>
+                  <boxGeometry args={[innerW, T * 0.9, innerD]} />
+                  <meshStandardMaterial color={shadeColor(color, +8)} metalness={mat.metalness} roughness={mat.roughness + 0.05} {...MAT_OFFSET} />
+                </mesh>
+                {/* Raf ön kenar — daha koyu vurgu */}
+                <mesh position={[0, shelfY, innerD / 2 + 0.001]}>
+                  <boxGeometry args={[innerW, T * 1.1, 0.003]} />
+                  <meshStandardMaterial color={shadeColor(color, +18)} metalness={mat.metalness + 0.05} roughness={mat.roughness - 0.12} {...MAT_OFFSET} />
+                </mesh>
+                {/* Raf üzeri alan arka duvarı — açık alan hissini güçlendir */}
+                <mesh position={[0, secCenterY + secH * 0.22, -innerD / 2 + 0.003]}>
+                  <boxGeometry args={[innerW, secH * 0.55, 0.004]} />
+                  <meshStandardMaterial color={shadeColor(color, -15)} roughness={0.98} metalness={0} {...MAT_OFFSET} />
+                </mesh>
+              </group>
+            );
+          } else if (sec.type === "open") {
+            // Açık alan — arka duvar ve yan gölgeler, raf yok
+            elements.push(
+              <group key={`csec${i}`}>
+                {/* Açık alan — sadece arka duvar tonu */}
+                <mesh position={[0, secCenterY, -innerD / 2 + 0.003]}>
+                  <boxGeometry args={[innerW, secH - T, 0.004]} />
+                  <meshStandardMaterial color={shadeColor(color, -18)} roughness={0.98} metalness={0} {...MAT_OFFSET} />
+                </mesh>
+                {/* Zemin çizgisi */}
+                <mesh position={[0, botY + T * 0.3, 0]}>
+                  <boxGeometry args={[innerW, T * 0.5, innerD]} />
+                  <meshStandardMaterial color={shadeColor(color, -8)} roughness={0.95} metalness={0} {...MAT_OFFSET} />
                 </mesh>
               </group>
             );
           } else if (sec.type === "hanger") {
+            // Askılık — tam derinlik boyunca askı çubuğu, üst kısımda
+            const railPosY = curY - secH * 0.18; // Üst kısım
             elements.push(
-              <group key={`csec${i}`} position={[0, secCenterY, -D * 0.15]}>
-                <mesh rotation={[0, 0, Math.PI / 2]}>
-                  <cylinderGeometry args={[0.009, 0.009, W - T * 2.5, 16]} />
-                  <meshStandardMaterial color="#9CA3AF" metalness={0.85} roughness={0.15} />
+              <group key={`csec${i}`}>
+                {/* Askı çubuğu — tam iç derinliğin ortasında */}
+                <mesh position={[0, railPosY, 0]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.010, 0.010, innerW * 0.92, 16]} />
+                  <meshStandardMaterial color="#C0C8D0" metalness={0.9} roughness={0.1} />
                 </mesh>
-                <mesh position={[-(W - T * 2.5) / 2, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.014, 0.014, 0.014, 12]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.7} roughness={0.3} />
+                {/* Sol braket */}
+                <mesh position={[-innerW * 0.44, railPosY, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.013, 0.013, 0.018, 12]} />
+                  <meshStandardMaterial color="#6B7280" metalness={0.8} roughness={0.2} />
                 </mesh>
-                <mesh position={[(W - T * 2.5) / 2, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.014, 0.014, 0.014, 12]} />
-                  <meshStandardMaterial color="#6B7280" metalness={0.7} roughness={0.3} />
+                {/* Sağ braket */}
+                <mesh position={[innerW * 0.44, railPosY, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.013, 0.013, 0.018, 12]} />
+                  <meshStandardMaterial color="#6B7280" metalness={0.8} roughness={0.2} />
+                </mesh>
+                {/* Arka derinlik çizgisi — askı alanı görünürlüğü */}
+                <mesh position={[0, railPosY - secH * 0.22, -innerD / 2 + 0.003]}>
+                  <boxGeometry args={[innerW, secH * 0.55, 0.004]} />
+                  <meshStandardMaterial color={shadeColor(color, -12)} roughness={0.98} metalness={0} {...MAT_OFFSET} />
+                </mesh>
+                {/* Zemin çizgisi */}
+                <mesh position={[0, botY + T * 0.3, 0]}>
+                  <boxGeometry args={[innerW, T * 0.5, innerD]} />
+                  <meshStandardMaterial color={shadeColor(color, -8)} roughness={0.95} metalness={0} {...MAT_OFFSET} />
                 </mesh>
               </group>
             );
           } else if (sec.type === "jewelry-drawer") {
-            // Takı çekmecesi — ince, mor aksan
             elements.push(
               <group key={`csec${i}`}>
-                <mesh castShadow position={[0, secCenterY, D / 2 + 0.009]}>
-                  <boxGeometry args={[W - T * 2.2, secH - 0.006, 0.014]} />
-                  <meshStandardMaterial color={shadeColor(color, +12)} metalness={mat.metalness + 0.05} roughness={mat.roughness - 0.08} {...MAT_OFFSET} />
+                <mesh castShadow position={[0, secCenterY, D / 2 - T * 0.5]}>
+                  <boxGeometry args={[innerW - 0.006, secH - T, T * 1.4]} />
+                  <meshStandardMaterial color={shadeColor(color, +14)} metalness={mat.metalness + 0.06} roughness={mat.roughness - 0.1} {...MAT_OFFSET} />
                 </mesh>
-                {/* Küçük yuvarlak kulp */}
-                <mesh position={[0, secCenterY, D / 2 + 0.020]}>
+                <mesh position={[0, secCenterY, D / 2 + 0.016]}>
                   <cylinderGeometry args={[0.012, 0.012, 0.008, 16]} />
-                  <meshStandardMaterial color="#C084FC" metalness={0.9} roughness={0.1} {...MAT_OFFSET} />
+                  <meshStandardMaterial color="#C084FC" metalness={0.92} roughness={0.08} {...MAT_OFFSET} />
                 </mesh>
               </group>
             );
           } else if (sec.type === "shoe-rack") {
-            // Ayakkabı rafı — eğik çubuklar
-            const rodCount = Math.max(2, Math.floor((W - T * 2) / 0.08));
-            for (let r = 0; r < Math.min(rodCount, 8); r++) {
-              const rx = -(W - T * 2) / 2 + (r + 0.5) * ((W - T * 2) / rodCount);
+            const rodCount = Math.max(3, Math.min(7, Math.floor(innerW / 0.09)));
+            for (let r = 0; r < rodCount; r++) {
+              const rx = -innerW / 2 + (r + 0.5) * (innerW / rodCount);
               elements.push(
-                <mesh key={`shoe${i}_${r}`} position={[rx, secCenterY, 0]} rotation={[0.3, 0, 0]}>
-                  <cylinderGeometry args={[0.005, 0.005, D * 0.85, 8]} />
-                  <meshStandardMaterial color="#818CF8" metalness={0.7} roughness={0.3} />
-                </mesh>
+                <group key={`shoe${i}_${r}`} position={[rx, secCenterY - secH * 0.08, 0]}>
+                  <mesh rotation={[0.28, 0, 0]}>
+                    <cylinderGeometry args={[0.006, 0.006, innerD * 0.82, 8]} />
+                    <meshStandardMaterial color="#818CF8" metalness={0.72} roughness={0.28} />
+                  </mesh>
+                </group>
               );
             }
           }
-          // shelf & open: sadece bölme çizgisi yeterli
 
-          // Boyut etiketi (sağda) + sürüklenebilir bölme çizgisi (alta)
-          elements.push(
-            <Html key={`clbl${i}`} position={[W / 2 + 0.02, secCenterY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
-              <div style={{ fontSize: "9px", color: "rgba(0,0,0,0.3)", whiteSpace: "nowrap", fontFamily: "system-ui, sans-serif", userSelect: "none" }}>
-                {sec.heightCm} cm
-              </div>
-            </Html>
-          );
+          // ── Dummy iç objeler — hacim ve gerçekçilik ──
+          if (sec.type === "shelf" && secH > 0.18) {
+            // Katlanmış kıyafet yığınları — raslantısal yerleşim
+            const stackColors = ["#E8D5C4", "#C8B8A2", "#D4C4B0", "#B8A898"];
+            const stackCount = Math.min(3, Math.floor(innerW / 0.14));
+            for (let s = 0; s < stackCount; s++) {
+              const sx = -innerW / 2 + (s + 0.55) * (innerW / (stackCount + 0.5));
+              const stackH = secH * (0.35 + Math.sin(s * 2.3) * 0.12);
+              elements.push(
+                <group key={`dummy_sh${i}_${s}`} position={[sx, secCenterY - secH * 0.22 + stackH / 2, -innerD * 0.18]}>
+                  {[0, 1, 2].map(layer => (
+                    <mesh key={layer} position={[0, layer * 0.038 - stackH * 0.25, 0]} castShadow>
+                      <boxGeometry args={[0.11 - layer * 0.008, 0.035, innerD * 0.55]} />
+                      <meshStandardMaterial
+                        color={stackColors[(s + layer) % stackColors.length]}
+                        roughness={0.88} metalness={0}
+                      />
+                    </mesh>
+                  ))}
+                </group>
+              );
+            }
+          } else if (sec.type === "open" && secH > 0.25) {
+            // Saklama kutusu — rafın altında
+            const boxW = Math.min(0.32, innerW * 0.42);
+            const boxH = Math.min(secH * 0.62, 0.28);
+            const boxD = innerD * 0.7;
+            const boxColors = ["#D4C4A8", "#C8B89C", "#BCA88C"];
+            const bCount = Math.min(3, Math.floor(innerW / (boxW + 0.04)));
+            for (let b = 0; b < bCount; b++) {
+              const bx = -innerW / 2 + boxW / 2 + b * (boxW + 0.035) + 0.02;
+              elements.push(
+                <group key={`dummy_bx${i}_${b}`} position={[bx, botY + boxH / 2 + T * 0.5, -innerD * 0.12]}>
+                  {/* Kutu gövdesi */}
+                  <mesh castShadow>
+                    <boxGeometry args={[boxW, boxH, boxD]} />
+                    <meshStandardMaterial color={boxColors[b % 3]} roughness={0.92} metalness={0} />
+                  </mesh>
+                  {/* Kutu kapağı — hafif açık */}
+                  <mesh position={[0, boxH / 2 + 0.004, 0]} castShadow>
+                    <boxGeometry args={[boxW + 0.004, 0.008, boxD + 0.004]} />
+                    <meshStandardMaterial color={shadeColor(boxColors[b % 3], -15)} roughness={0.9} metalness={0} />
+                  </mesh>
+                </group>
+              );
+            }
+          } else if (sec.type === "hanger" && secH > 0.6) {
+            // Askıdaki kıyafet simgeleri — basit ama etkili
+            const hCount = Math.min(5, Math.floor(innerW / 0.08));
+            for (let h = 0; h < hCount; h++) {
+              const hx = -innerW / 2 + (h + 0.5) * (innerW / hCount);
+              const hangLen = secH * (0.45 + Math.sin(h * 1.7) * 0.08);
+              const hColors = ["#8B7355", "#6B5C4E", "#9B8B7B", "#7A6A5A", "#5C4E3E"];
+              elements.push(
+                <group key={`dummy_hng${i}_${h}`} position={[hx, curY - secH * 0.22, -innerD * 0.08]}>
+                  {/* Kıyafet gövdesi — ince plak */}
+                  <mesh castShadow>
+                    <boxGeometry args={[0.055, hangLen, 0.022]} />
+                    <meshStandardMaterial color={hColors[h % hColors.length]} roughness={0.85} metalness={0} />
+                  </mesh>
+                </group>
+              );
+            }
+          }
+
+          // ── Boyut etiketi — teknik cetvel stili ──────────────────────────
+          if (selected) {
+            // Cetvel çizgisi
+            elements.push(
+              <group key={`ruler${i}`}>
+                {/* Üst cetvel çizgisi */}
+                <mesh position={[W / 2 + 0.018, curY, 0]}>
+                  <boxGeometry args={[0.018, 0.001, 0.001]} />
+                  <meshBasicMaterial color="#60A5FA" />
+                </mesh>
+                {/* Alt cetvel çizgisi */}
+                <mesh position={[W / 2 + 0.018, botY, 0]}>
+                  <boxGeometry args={[0.018, 0.001, 0.001]} />
+                  <meshBasicMaterial color="#60A5FA" />
+                </mesh>
+                {/* Dikey cetvel */}
+                <mesh position={[W / 2 + 0.027, (curY + botY) / 2, 0]}>
+                  <boxGeometry args={[0.001, curY - botY, 0.001]} />
+                  <meshBasicMaterial color="#93C5FD" />
+                </mesh>
+              </group>
+            );
+            elements.push(
+              <Html key={`clbl${i}`} position={[W / 2 + 0.052, secCenterY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700,
+                  color: "#1D4ED8",
+                  fontFamily: "'Roboto Mono', 'Courier New', monospace",
+                  userSelect: "none",
+                  background: "rgba(219,234,254,0.92)",
+                  borderRadius: 5,
+                  padding: "2px 6px",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(147,197,253,0.8)",
+                  boxShadow: "0 1px 4px rgba(37,99,235,0.15)",
+                  whiteSpace: "nowrap",
+                  letterSpacing: "0.02em",
+                }}>
+                  {Math.round(sec.heightCm * scale)} cm
+                </div>
+              </Html>
+            );
+          } else {
+            elements.push(
+              <Html key={`clbl${i}`} position={[W / 2 + 0.03, secCenterY, 0]} center distanceFactor={4} style={{ pointerEvents: "none" }}>
+                <div style={{
+                  fontSize: 9, color: "rgba(0,0,0,0.35)", whiteSpace: "nowrap",
+                  fontFamily: "system-ui", userSelect: "none",
+                  background: "rgba(255,255,255,0.55)", borderRadius: 3,
+                  padding: "1px 4px", backdropFilter: "blur(4px)",
+                }}>
+                  {Math.round(sec.heightCm * scale)} cm
+                </div>
+              </Html>
+            );
+          }
 
           curY = botY;
         });
         return elements;
       })()}
       {selected && (
-        <lineSegments>
-          <edgesGeometry args={[new THREE.BoxGeometry(W + 0.008, H + 0.008, D + 0.008)]} />
-          <lineBasicMaterial color="#F59E0B" />
-        </lineSegments>
+        <>
+          {/* Dış seçim çerçevesi — mavi */}
+          <lineSegments renderOrder={2}>
+            <edgesGeometry args={[new THREE.BoxGeometry(W + 0.012, H + 0.012, D + 0.012)]} />
+            <lineBasicMaterial color="#2563EB" linewidth={2} />
+          </lineSegments>
+          {/* İç çerçeve — açık mavi parlak */}
+          <lineSegments renderOrder={3}>
+            <edgesGeometry args={[new THREE.BoxGeometry(W + 0.002, H + 0.002, D + 0.002)]} />
+            <lineBasicMaterial color="#93C5FD" linewidth={1} />
+          </lineSegments>
+        </>
       )}
 
       {/* ── Bölüm ölçü etiketleri ────────────────────────────────────────── */}
@@ -1432,7 +1690,16 @@ function ModuPlanApp() {
     setCabinets(prev => prev.map(c => c.id === id ? { ...c, widthFactor } : c));
 
   const updateCabinetHeightFactor = (id: number, heightRatio: number) =>
-    setCabinets(prev => prev.map(c => c.id === id ? { ...c, heightRatio } : c));
+    setCabinets(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const oldH = room.height * c.heightRatio;
+      const newH = room.height * heightRatio;
+      const sf = newH / (oldH || 1);
+      const newSections = c.customSections
+        ? c.customSections.map(s => ({ ...s, heightCm: Math.max(8, Math.round(s.heightCm * sf)) }))
+        : c.customSections;
+      return { ...c, heightRatio, customSections: newSections };
+    }));
 
   const updateCabinetDepthFactor = (id: number, depthFactor: number) =>
     setCabinets(prev => prev.map(c => c.id === id ? { ...c, depthFactor } : c));
@@ -1495,12 +1762,19 @@ function ModuPlanApp() {
     ));
   };
   const updateSelectedHeightCm = (val: string) => {
-    if (selectedId == null) return;
+    if (selectedId == null || !selectedCab) return;
     const num = parseInt(val, 10);
     if (Number.isNaN(num) || num < 60 || num > room.height - 5) return;
-    setCabinets(prev => prev.map(c =>
-      c.id === selectedId ? { ...c, heightRatio: num / room.height } : c
-    ));
+    const oldH = room.height * selectedCab.heightRatio;
+    const scaleFactor = num / oldH;
+    setCabinets(prev => prev.map(c => {
+      if (c.id !== selectedId) return c;
+      // Bölümleri orantılı olarak ölçekle
+      const newSections = c.customSections
+        ? c.customSections.map(s => ({ ...s, heightCm: Math.max(8, Math.round(s.heightCm * scaleFactor)) }))
+        : c.customSections;
+      return { ...c, heightRatio: num / room.height, customSections: newSections };
+    }));
   };
   const updateSelectedDepthCm = (val: string) => {
     if (selectedId == null || !selectedCab) return;
@@ -1892,6 +2166,17 @@ function ModuPlanApp() {
       obDragFurnRef.current = { item: hit, offX: cx - (padX + hit.rx * sc), offY: cy - (padY + hit.ry * sc) };
       // bring to front
       setObFurniture(prev => { const next = prev.filter(f => f.id !== hit.id); return [...next, hit]; });
+    }
+  };
+
+  const obCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const { cx, cy, sc, padX, padY } = obGetCanvasPos(e);
+    const hit = obHitItem(cx, cy, sc, padX, padY);
+    if (hit) {
+      setObFurniture(prev => prev.filter(f => f.id !== hit.id));
+      setObHoverFurnId(null);
+      obDragFurnRef.current = null;
     }
   };
 
@@ -2387,37 +2672,104 @@ function ModuPlanApp() {
               </div>
             );
           })()}
-          <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden" style={{ background: "#F8F9FA" }}>
-            <Canvas shadows camera={{ position: [4, 4, 4], fov: 45 }}>
-              <color attach="background" args={["#F8F9FA"]} />
-              <ambientLight intensity={0.65} />
-              <directionalLight position={[5, 8, 5]} intensity={0.5} castShadow />
+          <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden" style={{ background: "#EEF0F3" }}>
+            <Canvas
+              shadows={{ type: "soft" as any }}
+              camera={{ position: [3.5, 3.2, 3.5], fov: 42 }}
+              gl={{ antialias: true, toneMappingExposure: 1.1 }}
+            >
+              {/* Sahne arka plan — açık gri-mavi */}
+              <color attach="background" args={["#EEF0F3"]} />
+              {/* Hafif sis — derinlik hissi */}
+              <fog attach="fog" args={["#EEF0F3", 12, 28]} />
+              {/* Ortam yansımaları — dolap yüzeyleri için */}
+              <Environment preset="apartment" background={false} />
 
-              {/* Zemin */}
-              <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
+              {/* ── Işıklandırma — 3 nokta düzeni ── */}
+              {/* Ana ışık — üstten sağdan */}
+              <directionalLight
+                position={[6, 10, 6]}
+                intensity={0.85}
+                castShadow
+                shadow-mapSize-width={2048}
+                shadow-mapSize-height={2048}
+                shadow-camera-near={0.1}
+                shadow-camera-far={30}
+                shadow-camera-left={-8}
+                shadow-camera-right={8}
+                shadow-camera-top={8}
+                shadow-camera-bottom={-8}
+                shadow-bias={-0.0005}
+              />
+              {/* Fill ışık — soldan yumuşak */}
+              <directionalLight position={[-4, 5, -3]} intensity={0.28} color="#D4E4F7" />
+              {/* Arka ışık — kontur */}
+              <directionalLight position={[0, 3, -6]} intensity={0.15} color="#F0ECD8" />
+              {/* Ortam ışığı */}
+              <ambientLight intensity={0.42} color="#F5F0E8" />
+
+              {/* ── Zemin — parke desen ── */}
+              <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.001, 0]}>
                 <planeGeometry args={[roomWidthM, roomDepthM]} />
-                <meshStandardMaterial color="#EDEDEF" />
+                <meshStandardMaterial
+                  color="#D4C9B0"
+                  roughness={0.85}
+                  metalness={0.02}
+                />
               </mesh>
-
+              {/* Dolap altı temas gölgeleri */}
+              <ContactShadows
+                position={[0, 0.002, 0]}
+                width={roomWidthM * 1.2}
+                height={roomDepthM * 1.2}
+                far={0.8}
+                blur={2.5}
+                opacity={0.28}
+                color="#7B6B5A"
+              />
+              {/* Zemin grid çizgileri — parke hissi */}
               <Grid
                 args={[roomWidthM, roomDepthM]}
-                cellSize={0.5} cellThickness={0.25} cellColor="#D1D5DB"
-                sectionSize={1} sectionThickness={0.8} sectionColor="#9CA3AF"
-                position={[0, 0.001, 0]}
+                cellSize={0.6} cellThickness={0.3} cellColor="#C4B89E"
+                sectionSize={1.2} sectionThickness={0.5} sectionColor="#B8AC94"
+                position={[0, 0.0005, 0]}
+                fadeDistance={16}
+                fadeStrength={1.2}
               />
 
-              {/* Duvarlar */}
-              <mesh position={[0, roomHeightM / 2, -roomDepthM / 2]}>
-                <boxGeometry args={[roomWidthM, roomHeightM, 0.05]} />
-                <meshStandardMaterial color="#E5E7EB" />
+              {/* ── Duvarlar — hafif sıva dokusu ── */}
+              {/* Arka duvar */}
+              <mesh position={[0, roomHeightM / 2, -roomDepthM / 2]} receiveShadow>
+                <boxGeometry args={[roomWidthM + 0.1, roomHeightM, 0.06]} />
+                <meshStandardMaterial color="#F2EFEA" roughness={0.96} metalness={0} />
               </mesh>
-              <mesh position={[-roomWidthM / 2, roomHeightM / 2, 0]}>
-                <boxGeometry args={[0.05, roomHeightM, roomDepthM]} />
-                <meshStandardMaterial color="#E5E7EB" />
+              {/* Sol duvar */}
+              <mesh position={[-roomWidthM / 2, roomHeightM / 2, 0]} receiveShadow>
+                <boxGeometry args={[0.06, roomHeightM, roomDepthM + 0.1]} />
+                <meshStandardMaterial color="#EDE9E3" roughness={0.96} metalness={0} />
               </mesh>
-              <mesh position={[roomWidthM / 2, roomHeightM / 2, 0]}>
-                <boxGeometry args={[0.05, roomHeightM, roomDepthM]} />
-                <meshStandardMaterial color="#E5E7EB" />
+              {/* Sağ duvar */}
+              <mesh position={[roomWidthM / 2, roomHeightM / 2, 0]} receiveShadow>
+                <boxGeometry args={[0.06, roomHeightM, roomDepthM + 0.1]} />
+                <meshStandardMaterial color="#EDE9E3" roughness={0.96} metalness={0} />
+              </mesh>
+              {/* Tavan */}
+              <mesh position={[0, roomHeightM, 0]}>
+                <boxGeometry args={[roomWidthM + 0.1, 0.04, roomDepthM + 0.1]} />
+                <meshStandardMaterial color="#F8F6F2" roughness={0.98} metalness={0} />
+              </mesh>
+              {/* Duvar-zemin birleşim şeridi (süpürgelik) */}
+              <mesh position={[0, 0.045, -roomDepthM / 2 + 0.03]} receiveShadow>
+                <boxGeometry args={[roomWidthM, 0.09, 0.02]} />
+                <meshStandardMaterial color="#C8C0B0" roughness={0.9} metalness={0.05} />
+              </mesh>
+              <mesh position={[-roomWidthM / 2 + 0.03, 0.045, 0]} receiveShadow>
+                <boxGeometry args={[0.02, 0.09, roomDepthM]} />
+                <meshStandardMaterial color="#C8C0B0" roughness={0.9} metalness={0.05} />
+              </mesh>
+              <mesh position={[roomWidthM / 2 - 0.03, 0.045, 0]} receiveShadow>
+                <boxGeometry args={[0.02, 0.09, roomDepthM]} />
+                <meshStandardMaterial color="#C8C0B0" roughness={0.9} metalness={0.05} />
               </mesh>
 
               {/* ── Oda Planı Mobilyaları — onboarding'den gelen eşyalar ── */}
@@ -2513,7 +2865,15 @@ function ModuPlanApp() {
                 enableZoom
                 enableRotate={!orbitInteracting && !placedProduct}
                 enablePan={!orbitInteracting && !placedProduct}
-                maxPolarAngle={Math.PI / 2.1}
+                maxPolarAngle={Math.PI / 2.08}
+                minDistance={1.2}
+                maxDistance={12}
+                enableDamping
+                dampingFactor={0.08}
+                rotateSpeed={0.7}
+                zoomSpeed={0.9}
+                panSpeed={0.8}
+                target={[0, roomHeightM * 0.35, 0]}
               />
 
               {/* ── Ürün Dene — Tek mesh, tek düzlem, eksen panelden ── */}
@@ -2692,7 +3052,8 @@ function ModuPlanApp() {
         </section>
 
         {/* ── Sağ Panel ─────────────────────────────────────────────────── */}
-        <aside className="w-80 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)]">
+        <aside className="w-80 space-y-3 overflow-y-auto max-h-[calc(100vh-120px)] scrollbar-thin"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "#CBD5E1 transparent" }}>
 
           {/* PDF İndir */}
           <button
@@ -2704,7 +3065,7 @@ function ModuPlanApp() {
           </button>
 
           {/* Oda Ölçüleri */}
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="rounded-2xl border border-white/60 shadow-lgp-4" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(18px)" }}>
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs font-semibold text-slate-500">Oda Ölçüleri</div>
               <div className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">
@@ -2734,7 +3095,7 @@ function ModuPlanApp() {
           </div>
 
           {/* ── Dolap İçi Düzenleyici ── */}
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="rounded-2xl border border-white/60 shadow-lgoverflow-hidden" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(18px)" }}>
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold text-slate-700">Dolap İçi Düzenleyici</div>
@@ -2975,7 +3336,7 @@ function ModuPlanApp() {
           </div>
 
           {/* ── Ürün Dene ── */}
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="rounded-2xl border border-white/60 shadow-lgoverflow-hidden" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(18px)" }}>
             <button
               onClick={() => { setShowProductPanel(v => !v); if (!showProductPanel) setTryProductId(null); }}
               className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
@@ -3131,7 +3492,7 @@ function ModuPlanApp() {
 
           {/* Seçili Dolap — Tabbed panel */}
           {selectedCab && (
-            <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="rounded-2xl border border-white/60 shadow-lgoverflow-hidden" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(18px)" }}>
 
               {/* Header — ad + aksiyon butonları */}
               <div className="px-4 pt-3 pb-2 border-b border-slate-100">
@@ -3175,15 +3536,21 @@ function ModuPlanApp() {
                   {/* 3 boyut — G / Y / D */}
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { label: "G (cm)", min: 40, max: 400, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.widthFactor), onChange: updateSelectedWidthCm, hint: "→ sağ kenar" },
-                      { label: "Y (cm)", min: 60, max: room.height - 5, val: Math.round(room.height * selectedCab.heightRatio), onChange: updateSelectedHeightCm, hint: "↑ üst kenar" },
-                      { label: "D (cm)", min: 20, max: 120, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.depthFactor), onChange: updateSelectedDepthCm, hint: "◆ ön yüzey" },
-                    ].map(({ label, min, max, val, onChange, hint }) => (
+                      { label: "G (cm)", min: 40, max: 400, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.widthFactor), onCommit: updateSelectedWidthCm, hint: "→ sağ kenar", color: "#2563EB" },
+                      { label: "Y (cm)", min: 60, max: room.height - 5, val: Math.round(room.height * selectedCab.heightRatio), onCommit: updateSelectedHeightCm, hint: "↑ üst kenar", color: "#2563EB" },
+                      { label: "D (cm)", min: 20, max: 120, val: Math.round(room.height * selectedCab.heightRatio * selectedCab.depthFactor), onCommit: updateSelectedDepthCm, hint: "◆ ön yüzey", color: "#10B981" },
+                    ].map(({ label, min, max, val, onCommit, hint, color }) => (
                       <label key={label} className="flex flex-col gap-1">
-                        <span className="text-[10px] text-slate-500 font-medium">{label}</span>
-                        <input type="number" min={min} max={max} value={val}
-                          onChange={e => onChange(e.target.value)}
-                          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                        <span className="text-[10px] font-medium" style={{ color }}>{label}</span>
+                        <input
+                          type="number" min={min} max={max}
+                          defaultValue={val}
+                          key={`${selectedId}-${label}-${val}`}
+                          onFocus={e => { e.target.select(); }}
+                          onBlur={e => onCommit(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") { onCommit((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).blur(); } }}
+                          style={{ borderColor: color + "55" }}
+                          className="rounded-lg border px-2 py-1.5 text-xs font-bold text-center focus:outline-none focus:ring-2 focus:ring-primary/40" />
                         <span className="text-[9px] text-slate-400 text-center">{hint}</span>
                       </label>
                     ))}
@@ -3419,7 +3786,7 @@ function ModuPlanApp() {
           </div>
 
           {/* Bu Kombini Kaydet */}
-          <div className="bg-white/80 backdrop-blur rounded-2xl shadow-sm border border-slate-200 p-4 space-y-2">
+          <div className="rounded-2xl border border-white/60 shadow-lgp-4 space-y-2" style={{ background: "rgba(255,255,255,0.75)", backdropFilter: "blur(18px)" }}>
             <div className="text-xs font-semibold text-slate-500">Kombin Kaydet</div>
             <div className="flex gap-2">
               <input
